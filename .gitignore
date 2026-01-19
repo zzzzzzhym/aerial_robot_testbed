@@ -7,3 +7,6 @@ env/
 
 # Ignore IDE files
 .vscode/
+
+paper_results/*.pdf
+paper_results/*.png

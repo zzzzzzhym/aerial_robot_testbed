@@ -1,10 +1,10 @@
 import os
 import numpy as np
 
-def find_path_to_data_subfolder(subfolder_name):
+def find_path_to_folder(subfolder_name: list[str]) -> str:
     current_dir = os.path.dirname(os.path.abspath(__file__))
     upper_dir = os.path.dirname(current_dir)
-    path = os.path.join(upper_dir, "data", subfolder_name)
+    path = os.path.join(upper_dir, *subfolder_name)
     return path
 
 def write_to_csv(file_path, first_line, array):
