@@ -1,8 +1,7 @@
 import numpy as np
-import matplotlib.pyplot as plt
 
-import airfoil.sigma_function as sigma_function
-from airfoil.air import Air
+import sigma_function
+from air import Air
 
 
 
@@ -69,19 +68,36 @@ class Coeffecients:
         rn = Air.rho * u * chord / Air.mu
         return rn
     
-    
-if __name__ == "__main__":
-    alpha = np.linspace(-180, 180, 500)
-    coeff = Coeffecients()
-    cl = coeff.get_cl(np.radians(alpha))
-    cd = coeff.get_cd(np.radians(alpha), 10, 0.1)
 
-    plt.figure(figsize=(10, 6))
-    plt.plot(alpha, cl, label='CL')
-    plt.plot(alpha, cd, label='CD')
-    plt.plot(alpha, cl/cd, label='CL/CD')
+class NeuroBEMCoefficients:
+    """
+    Coefficient model used in the NeuroBEM MATLAB BEM code (ParameterID.m).
 
-    plt.xlabel('Angle of Attack (degrees)')
-    plt.ylabel('Coefficients')
-    plt.legend()
-    plt.show()
+    Nonlinear (final) mode:
+        cl(alpha) = a * sin(alpha) * cos(alpha)
+        cd(alpha) = d * sin(alpha)^2
+
+    Linear (initialization) mode:
+        cl(alpha) = a * alpha
+        cd(alpha) = d   (constant)
+
+    Notes:
+    - alpha is in radians.
+    - u and chord are accepted for interface compatibility but not used.
+    """
+
+    def __init__(self, a=15.20569, d=13.53063, linear_mode=False):
+        self.a = a
+        self.d = d
+        self.linear_mode = linear_mode
+
+    def get_cl(self, alpha):
+        if self.linear_mode:
+            return self.a * alpha
+        return self.a * np.sin(alpha) * np.cos(alpha)
+
+    def get_cd(self, alpha, u=None, chord=None):
+        if self.linear_mode:
+            # constant drag in linearMode branch of their MATLAB
+            return np.full_like(alpha, self.d, dtype=float) if np.ndim(alpha) else float(self.d)
+        return self.d * (np.sin(alpha) ** 2)

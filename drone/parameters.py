@@ -124,6 +124,29 @@ class TrackingOnSE3(Drone):
         self.f_motor_max = 50.0  # maximum possible thrust per motor [N] Thrust per motor: 200 - 800 grams for small drones
         self.f_motor_min = 0.1   # minimum possible thrust per motor [N]
 
+class Neurobem(Drone):
+    """
+    From https://download.ifi.uzh.ch/rpg/NeuroBEM/
+    code/simulator/include/params.h
+    """
+    def __init__(self):
+        m = 0.772    # kg   probably included other payload, since it's not the same as 0.752 in the params.h
+        d = 0.1   # distance from drone center to motor center [m]
+        inertia = np.diag([0.0025, 0.0021, 0.0043])  # [kgm2] 
+        num_of_rotors = 4
+        c_tau_f = 8.004e-4  # convert thrust to torque in z axis [m]; this is not from their repo
+        # rotor position vectors in body frame (note that in this paper, 2 rotors are in x axis and 2 rotors are in y axis, unlike a regular drone setup)
+        p_0 = self.flip_between_flu_frd(np.array([d, 0, 0]))     # positive x
+        p_1 = self.flip_between_flu_frd(np.array([0, d, 0]))     # positive y
+        p_2 = self.flip_between_flu_frd(np.array([-d, 0, 0]))    # negative x
+        p_3 = self.flip_between_flu_frd(np.array([0, -d, 0]))    # negative y
+        is_ccw_blade = [False, True, False, True]  
+        super().__init__(m=m, inertia=inertia, num_of_rotors=num_of_rotors, 
+                         c_tau_f=c_tau_f, p_0=p_0, p_1=p_1, p_2=p_2, p_3=p_3, 
+                         is_ccw_blade=is_ccw_blade)
+        self.f_motor_max = 10.0  # maximum possible thrust per motor [N] Thrust per motor: 200 - 800 grams for small drones
+        self.f_motor_min = 0.1   # minimum possible thrust per motor [N]
+
 class EndEffector:
     """End effector parameters
     Assume a fixed rod with a spherical sponge at the tip, only consider 1D linear deformation without damping effect
