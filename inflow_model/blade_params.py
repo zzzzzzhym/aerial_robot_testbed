@@ -21,7 +21,12 @@ class Blade:
     def get_blade_pitch(self, y: float):
         """blade torsion angle relative to the rotation disk"""
         raise NotImplementedError
-
+    
+    def linear_interpolate(self, val_root, val_tip, y):
+        weight = y/self.y_max
+        weight = np.clip(weight, 0.0, 1.0)
+        result = (1 - weight)*val_root + weight*val_tip
+        return result
 
 class kde_cf155_tp(Blade):
     """https://www.kdedirect.com/collections/multi-rotor-propeller-blades/products/kde-cf155-tp"""
@@ -59,11 +64,67 @@ class APC_8x6(Blade):
         max_pitch = np.radians(45)
         pitch = self.linear_interpolate(max_pitch, min_pitch, y)
         return pitch
-    
-    def linear_interpolate(self, val_root, val_tip, y):
-        weight = y/self.y_max
-        result = (1 - weight)*val_root + weight*val_tip
-        return result
+
+
+
+class Neurobem(Blade):
+    """
+    From https://download.ifi.uzh.ch/rpg/NeuroBEM/
+    code/Matlab/BEM/bem_parameters.yaml
+    """
+
+    # from code/ExampleData/BEM/Ex_Measurement.csv this is a processed test data
+    NEUROBEM_THRUST_TEST_STAND_OMEGA = np.array([
+        326.22067176,
+        502.55765622,
+        757.14563709,
+        990.64100511,
+        1201.93729599,
+        1383.21913580,
+        1589.33295295,
+        1721.14961863,
+        1908.97282951,
+        2021.06854326
+    ])
+
+    NEUROBEM_THRUST_TEST_STAND_FZ = np.array([
+        0.10751066,
+        0.30332521,
+        0.76662941,
+        1.36762535,
+        2.01168993,
+        2.71388672,
+        3.68166078,
+        4.44330464,
+        5.52421919,
+        6.25029314
+    ])
+
+    def __init__(self):
+        super().__init__(
+            num_of_blades=3,
+            y_max=6.477e-2,
+            cl_1=15.20569*0.5,
+            cl_2=15.20569,
+            alpha_0=np.radians(20.0),
+            cd=13.53063,
+            cd_0=0.01
+        )
+
+        self.pitch_root = np.radians(21.77)   # deg -> rad
+        self.twist = np.radians(-11.0)        # unlike the yaml file comment definition, this is the total twist in deg. see param.theta_1 in code/Matlab/BEM/ParameterID.m
+
+        self.chord_inner = 1.7e-2
+        self.chord_outer = 0.7e-2
+
+    def get_chord(self, y: float):
+        """Linear chord taper from root to tip."""
+        return self.linear_interpolate(self.chord_inner, self.chord_outer, y)
+
+    def get_blade_pitch(self, y: float):
+        """Linear twist distribution from root."""
+        pitch_tip = self.pitch_root + self.twist
+        return self.linear_interpolate(self.pitch_root, pitch_tip, y)
 
 class APC_8x6_OfficialData:
     # pad official data with 0.0 at the beginning
@@ -80,7 +141,8 @@ class APC_8x6_OfficialData:
         # convert the official data to ISO units
         pound_force_to_newton = 4.44822
         return (APC_8x6_OfficialData.THRUST_APC8X6_OFFICIAL_DATA_LBF * pound_force_to_newton)
-    
+
+
 
 
 if __name__ == "__main__":

@@ -64,7 +64,7 @@ class BladeElementTheory:
             omega_blade (float): rotation speed of the blade, counter clockwise is positive
 
         Returns:
-            u_t: relative wind speed perpendicular to the blade (in y direction), when blade rotates in positive direction without wind, it generates negative u_t
+            u_t: relative wind speed perpendicular to the blade (in y direction), when blade rotates in positive direction without wind, it generates positive u_t
             u_p: relative wind speed in z direction
         """
         # v_x_blade_frame = v_flow_disk_frame[0:2]@np.array([np.cos(psi_blade_angle), np.sin(psi_blade_angle)])
