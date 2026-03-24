@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 class Blade:
     def __init__(self, num_of_blades=2, y_max=0.1, cl_1=5.3, cl_2=1.7, alpha_0=np.radians(20.6), cd=1.8, cd_0=0.01):
         self.num_of_blades = num_of_blades
-        self.y_max = y_max
+        self.y_max = y_max  # blade span range from y_min to y_max
         self.y_min = 0
         self.cl_1 = cl_1
         self.cl_2 = cl_2
@@ -65,6 +65,48 @@ class APC_8x6(Blade):
         pitch = self.linear_interpolate(max_pitch, min_pitch, y)
         return pitch
 
+
+class P600_Blade(Blade):
+    """Drone blade of "A Highly-Efficient Hybrid Simulation System for Flight Controller Design and Evaluation of Unmanned Aerial Vehicles"
+    """
+    def __init__(self):
+        super().__init__(num_of_blades=2, y_max=0.195)
+        self.r = np.array([0.1282, 0.2051, 0.3077, 0.4103, 0.5128, 0.6154, 0.7179, 0.8205, 0.9231, 0.9846]) # normalized spanwise position (y/y_max)
+        self.chord = np.array([0.0103, 0.0139, 0.0220, 0.0267, 0.0284, 0.0278, 0.0253, 0.0210, 0.0147, 0.0093])
+        self.pitch = np.array([
+            0.05811946,
+            0.35639623,
+            0.32096605,
+            0.28605946,
+            0.2427753,
+            0.2125811,
+            0.1855285,
+            0.1656317,
+            0.1459095,
+            0.1342158
+        ])
+        self.interp_chord = interp1d(
+            self.r,
+            self.chord,
+            kind="linear",
+            bounds_error=False,
+            fill_value=(self.chord[0], self.chord[-1])
+        )
+        self.interp_pitch = interp1d(
+            self.r,
+            self.pitch,
+            kind="linear",
+            bounds_error=False,
+            fill_value=(self.pitch[0], self.pitch[-1])
+        )
+
+    def get_chord(self, y: float):
+        """Get the chord length at a given y position along the blade."""
+        return self.interp_chord(y / self.y_max)
+
+    def get_blade_pitch(self, y: float):
+        """Get the blade pitch at a given y position along the blade."""
+        return self.interp_pitch(y / self.y_max)
 
 
 class Neurobem(Blade):
@@ -145,23 +187,5 @@ class APC_8x6_OfficialData:
 
 
 
-if __name__ == "__main__":
-    apc_8x6_instance = APC_8x6()
-    fig, axs = plt.subplots(2, 1, figsize=(10, 8))
 
-    y_values = np.linspace(0, apc_8x6_instance.y_max, 100)
-    chord_values = [apc_8x6_instance.get_chord(y) for y in y_values]
-    pitch_values = [apc_8x6_instance.get_blade_pitch(y) for y in y_values]
 
-    axs[0].plot(y_values, chord_values)
-    axs[0].set_title('Chord Distribution')
-    axs[0].set_xlabel('y')
-    axs[0].set_ylabel('Chord Length')
-
-    axs[1].plot(y_values, pitch_values)
-    axs[1].set_title('Blade Pitch Distribution')
-    axs[1].set_xlabel('y')
-    axs[1].set_ylabel('Blade Pitch (radians)')
-
-    plt.tight_layout()
-    plt.show()
