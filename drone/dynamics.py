@@ -11,7 +11,7 @@ from dynamics_state import State
 
 
 class DroneDynamics:
-    def __init__(self, drone: params.Drone, propeller: propeller.Propeller, disturbance: disturbance_model.DisturbanceForce, init_state: State, dt: float = 0.01) -> None:
+    def __init__(self, drone: params.Multicopter, propeller: propeller.Propeller, disturbance: disturbance_model.DisturbanceForce, init_state: State, dt: float = 0.01) -> None:
         """
         pose is a 3x3 rotation matrix from body to inertial frame
         omega is in body fix frame

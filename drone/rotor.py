@@ -57,7 +57,7 @@ class Rotor:
     
 class RotorSet:
     """This class manage the collection of all rotors on the drone."""    
-    def __init__(self, drone: params.Drone, propeller: propeller.Propeller) -> None:
+    def __init__(self, drone: params.Multicopter, propeller: propeller.Propeller) -> None:
         self.params = drone.get_rotor_data()
         self.rotors: list[Rotor] = [
             Rotor(propeller, position, blade) 

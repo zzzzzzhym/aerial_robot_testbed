@@ -10,7 +10,7 @@ import inflow_model.propeller_lookup_table as propeller_lookup_table
 import propeller
 
 class DroneController:
-    def __init__(self, drone: params.Drone) -> None:
+    def __init__(self, drone: params.Multicopter) -> None:
         self.params = drone
         self.e_x = np.array([0.0, 0.0, 0.0])
         self.e_v = np.array([0.0, 0.0, 0.0])

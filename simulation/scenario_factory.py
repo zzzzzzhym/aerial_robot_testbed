@@ -11,7 +11,7 @@ import scenario
 class Factory:
     @staticmethod
     def make_scenario(trajectory: drone.trajectory.TrajectoryReference, 
-                      drone_params: drone.parameters.Drone, 
+                      drone_params: drone.parameters.Multicopter, 
                       propeller_params: drone.propeller.Propeller, 
                       disturbance_model: drone.disturbance_model.DisturbanceForce,
                       dt_dynamics: float) -> scenario.Scenario:
@@ -35,7 +35,7 @@ class Factory:
         return product
 
     @staticmethod
-    def make_dynamics_assembly(drone_params: drone.parameters.Drone, 
+    def make_dynamics_assembly(drone_params: drone.parameters.Multicopter, 
                                propeller_params: drone.propeller.Propeller, 
                                disturbance_model: drone.disturbance_model.DisturbanceForce, 
                                init_state: drone.dynamics_state.State, 
@@ -49,7 +49,7 @@ class Factory:
         return assembly
     
     @staticmethod
-    def make_controller_assembly(drone_params: drone.parameters.Drone) -> drone.controller.DroneController:
+    def make_controller_assembly(drone_params: drone.parameters.Multicopter) -> drone.controller.DroneController:
         assembly = drone.controller.DroneController(drone_params)
         return assembly
     
