@@ -65,7 +65,7 @@ class TestDroneDynamics(unittest.TestCase):
         """one step integration for 1sec"""
         dt = 1.0
         self.dynamics.dt = 1.0
-        self.dynamics.step_dynamics(0.0)
+        self.dynamics.step(0.0)
         pose_answer = np.array([[1.0, 0.0, 0.0],
                                 [0.0, np.cos(np.pi/6), -np.sin(np.pi/6)],
                                 [0.0, np.sin(np.pi/6), np.cos(np.pi/6)]])
@@ -77,7 +77,7 @@ class TestDroneDynamics(unittest.TestCase):
         """fine integration for 1sec"""
         self.dynamics.dt = 0.01
         for i in range(100):
-            self.dynamics.step_dynamics(self.dt*i)
+            self.dynamics.step(self.dt*i)
         pose_answer = np.array([[1.0, 0.0, 0.0],
                                 [0.0, np.cos(np.pi/6), -np.sin(np.pi/6)],
                                 [0.0, np.sin(np.pi/6), np.cos(np.pi/6)]])
@@ -89,7 +89,7 @@ class TestDroneDynamics(unittest.TestCase):
     def test_step_dynamics_2(self):
         """test torque"""
         self.dynamics.torque = np.array([1.0, 0.0, 0.0])
-        self.dynamics.step_dynamics(self.dt*100)
+        self.dynamics.step(self.dt*100)
         expected_omega_dot = self.drone.inertia_inv@self.dynamics.torque
         np.testing.assert_array_almost_equal(self.dynamics.omega_dot, expected_omega_dot)
 

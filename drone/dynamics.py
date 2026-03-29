@@ -8,9 +8,11 @@ import disturbance_model
 import propeller
 import rotor
 from dynamics_state import State
+import simulation.interface
+import simulation.scenario
 
 
-class DroneDynamics:
+class DroneDynamics(simulation.scenario.Dynamics):
     def __init__(self, drone: params.Multicopter, propeller: propeller.Propeller, disturbance: disturbance_model.DisturbanceForce, init_state: State, dt: float = 0.01) -> None:
         """
         pose is a 3x3 rotation matrix from body to inertial frame
@@ -35,9 +37,9 @@ class DroneDynamics:
         self.rotors = rotor.RotorSet(self.drone, propeller)
         self.rotation_speed = np.array([0.0, 0.0, 0.0, 0.0])    # rotor rotation speed in rad/s
 
-    def step_dynamics(self, t: float, f: np.ndarray, torque: np.ndarray, rotation_speed: np.ndarray) -> None:
+    def step(self, t: float, controller_output: simulation.interface.ControllerOutput) -> None:
         """Entry point of drone dynamics"""
-        self.take_control_output(f, torque, rotation_speed)
+        self.take_control_output(controller_output)
         self.rotors.step_all_rotor_states(self.state, self.rotation_speed)  # just to update rotor speed (should separate state and speed)
         y_0 = self.pack_state_vector()
         self.step_disturbance_force(t)
@@ -47,11 +49,11 @@ class DroneDynamics:
         self.unpack_state_derivatives(y_t_dot)
         self.rotors.step_all_rotor_states(self.state, self.rotation_speed)
 
-    def take_control_output(self, f: np.ndarray, torque: np.ndarray, rotation_speed: np.ndarray) -> None:
+    def take_control_output(self, controller_output: simulation.interface.ControllerOutput) -> None:
         """Take control output from controller"""
-        self.f = f
-        self.torque = torque
-        self.rotation_speed = rotation_speed
+        self.f = controller_output.f
+        self.torque = controller_output.torque
+        self.rotation_speed = controller_output.rotation_speed
 
     def pack_state_vector(self) -> np.ndarray:
         y = np.array([self.state.position[0], # 0
@@ -167,5 +169,17 @@ class DroneDynamics:
                             t_disturb_implicit_dot[2]])  # 18
         return y_dot
     
+    def get_dynamics_output(self) -> simulation.interface.DynamicsOutput:
+        output = simulation.interface.DynamicsOutput(
+            position=self.state.position,
+            v=self.state.v,
+            pose=self.state.pose,
+            omega=self.state.omega,
+            v_dot=self.v_dot,
+            rotors=self.rotors,
+            omega_dot=self.omega_dot
+        )
+        return output
 
-
+    def shutdown(self):
+        pass

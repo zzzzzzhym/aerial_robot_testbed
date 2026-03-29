@@ -70,7 +70,8 @@ class P600_Blade(Blade):
     """Drone blade of "A Highly-Efficient Hybrid Simulation System for Flight Controller Design and Evaluation of Unmanned Aerial Vehicles"
     """
     def __init__(self):
-        super().__init__(num_of_blades=2, y_max=0.195)
+        super().__init__(num_of_blades=2, y_max=0.195, cl_1=20.0, cl_2=10.0) # init guess
+        # super().__init__(num_of_blades=2, y_max=0.195, cl_1=44.86982035, cl_2=24.79577442, cd=1.47286755, alpha_0=0.43897916)   # fitted
         self.r = np.array([0.1282, 0.2051, 0.3077, 0.4103, 0.5128, 0.6154, 0.7179, 0.8205, 0.9231, 0.9846]) # normalized spanwise position (y/y_max)
         self.chord = np.array([0.0103, 0.0139, 0.0220, 0.0267, 0.0284, 0.0278, 0.0253, 0.0210, 0.0147, 0.0093])
         self.pitch = np.array([
@@ -168,7 +169,17 @@ class Neurobem(Blade):
         pitch_tip = self.pitch_root + self.twist
         return self.linear_interpolate(self.pitch_root, pitch_tip, y)
 
-class APC_8x6_OfficialData:
+
+class GroundTruthBladeData:
+    @staticmethod
+    def get_omega_range():
+        raise NotImplementedError
+    
+    @staticmethod
+    def get_thrust_range():
+        raise NotImplementedError
+
+class APC_8x6_OfficialData(GroundTruthBladeData):
     # pad official data with 0.0 at the beginning
     OMEGA_APC8X6_OFFICIAL_DATA_RPM = np.array([0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 13000, 14000, 15000, 16000, 17000, 18000, 19000, 20000, 21000, 22000, 23000, 24000, 25000]) # rpm
     THRUST_APC8X6_OFFICIAL_DATA_LBF = np.array([0.0, 0.015, 0.061, 0.138, 0.246, 0.385, 0.555, 0.757, 0.990, 1.256, 1.553, 1.884, 2.247, 2.643, 3.073, 3.537, 4.035, 4.569, 5.138, 5.743, 6.385, 7.063, 7.779, 8.532, 9.321, 10.146]) # pound force
@@ -184,8 +195,25 @@ class APC_8x6_OfficialData:
         pound_force_to_newton = 4.44822
         return (APC_8x6_OfficialData.THRUST_APC8X6_OFFICIAL_DATA_LBF * pound_force_to_newton)
 
-
-
+class P600_SimData(GroundTruthBladeData):
+    """This data is tested by fixing P600 drone in space and run propeller at different speeds in sim"""
+    ROTOR_SPEED = np.array([0, 100, 200, 300, 400, 500, 600])   # rad/s
+    ROTOR_FORCE = np.array([
+        0.0,
+        0.7240404257683697,
+        2.896367916789943,
+        6.573501874296495,
+        11.763916383515578,
+        19.24778120814701,
+        26.174281710722067
+    ])  # N
+    @staticmethod
+    def get_omega_range():
+        return P600_SimData.ROTOR_SPEED
+    
+    @staticmethod
+    def get_thrust_range():
+        return P600_SimData.ROTOR_FORCE
 
 
 

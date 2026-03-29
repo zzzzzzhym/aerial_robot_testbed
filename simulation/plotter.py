@@ -12,11 +12,13 @@ class Plotter:
 
     def make_plots(self, logger_output: np.ndarray, has_animation=False):
         # plot
+        self.plot_3d_trace(logger_output)
+        self.plot_trajectory(logger_output)
+        self.plot_rotor(logger_output)
         # self.plot_position_and_derivatives(logger_output)
         # self.plot_omega_and_derivatives(logger_output)
         # self.plot_pose_and_derivatives(logger_output)
         # self.plot_quaternion(logger_output)
-        self.plot_trajectory(logger_output)
         self.plot_force_and_torque(logger_output)
         self.plot_position_tracking_error(logger_output)
         self.plot_pose_tracking_error(logger_output)
@@ -24,9 +26,7 @@ class Plotter:
         # self.plot_control_input_force(logger_output)
         self.plot_pose_desired(logger_output)
         self.plot_omega_desired(logger_output)
-        self.plot_rotor(logger_output)
         self.plot_disturbance_force(logger_output)
-        self.plot_3d_trace(logger_output)
         self.plot_task_trajectory(logger_output)
         if has_animation:
             self.ani = self.animate_pose(logger_output)
@@ -526,24 +526,6 @@ class Plotter:
         axs[3, 1].set_ylabel("torque_norm")
 
     def plot_rotor(self, logger: np.ndarray):
-        # fig, axs = plt.subplots(2, 1, sharex=True)
-        # fig.suptitle('rotor force, rotor speed')
-        # axs[0].plot(self.t_span, logger["f_motor"][:, 0], label="Rotor 0 Force")
-        # axs[0].plot(self.t_span, logger["f_motor"][:, 1], label="Rotor 1 Force")
-        # axs[0].plot(self.t_span, logger["f_motor"][:, 2], label="Rotor 2 Force")
-        # axs[0].plot(self.t_span, logger["f_motor"][:, 3], label="Rotor 3 Force")
-        # axs[0].set_ylabel("Rotor Forces")
-        # axs[0].legend()
-        # axs[1].plot(self.t_span, logger["rotor_0_rotation_spd"], label="Rotor 0 Speed")
-        # axs[1].plot(self.t_span, logger["rotor_1_rotation_spd"], label="Rotor 1 Speed")
-        # axs[1].plot(self.t_span, logger["rotor_2_rotation_spd"], label="Rotor 2 Speed")
-        # axs[1].plot(self.t_span, logger["rotor_3_rotation_spd"], label="Rotor 3 Speed")
-        # axs[1].plot(self.t_span, logger["rotor_0_rotation_spd_delayed"], label="Rotor 0 Speed delayed")
-        # axs[1].plot(self.t_span, logger["rotor_1_rotation_spd_delayed"], label="Rotor 1 Speed delayed")
-        # axs[1].plot(self.t_span, logger["rotor_2_rotation_spd_delayed"], label="Rotor 2 Speed delayed")
-        # axs[1].plot(self.t_span, logger["rotor_3_rotation_spd_delayed"], label="Rotor 3 Speed delayed")
-        # axs[1].set_ylabel("rotor_spd [RPM]")
-        # axs[1].legend()
         fig, axs = plt.subplots(2, 1, sharex=True, figsize=(10, 6))
         fig.suptitle('Rotor Force & Rotor Speed')
 
@@ -555,9 +537,18 @@ class Plotter:
         for i in range(4):
             axs[0].plot(
                 self.t_span, 
-                logger["f_motor"][:, i], 
-                label=f"Rotor {i} Force", 
+                logger["f_motor_desired"][:, i], 
+                label=f"Rotor {i} desired thrust", 
                 linestyle='-', 
+                linewidth=force_line_width[i], 
+                color=force_colors[i], 
+                zorder=3+i  # ensure later lines go on top
+            )
+            axs[0].plot(
+                self.t_span, 
+                logger[f"rotor_{i}_thrust"], 
+                label=f"Rotor {i} actual thrust", 
+                linestyle='--', 
                 linewidth=force_line_width[i], 
                 color=force_colors[i], 
                 zorder=3+i  # ensure later lines go on top
@@ -577,7 +568,7 @@ class Plotter:
                 color=speed_colors[i], 
                 linestyle='-', 
                 linewidth=speed_line_width[i], 
-                zorder=2*i
+                zorder=3*i
             )
             axs[1].plot(
                 self.t_span, 
@@ -586,8 +577,18 @@ class Plotter:
                 color=speed_colors[i], 
                 linestyle=delay_styles[i], 
                 linewidth=speed_line_width[i], 
-                zorder=2*i + 1
+                zorder=3*i + 1
             )
+            axs[1].plot(
+                self.t_span, 
+                logger[f"rotor_speeds_desired"][:, i], 
+                label=f"Desired Rotor {i} Speed", 
+                color=speed_colors[i], 
+                linestyle=delay_styles[i], 
+                linewidth=speed_line_width[i], 
+                zorder=3*i + 2
+            )
+
         axs[1].set_ylabel("Rotor Speed [RPM]")
         axs[1].legend(loc='upper right')
 
@@ -607,17 +608,21 @@ class Plotter:
         axs[2].plot(self.t_span, logger["omega"][:, 2], marker='.')
         axs[0].legend(['omega desired', 'omega'])
 
-    def plot_3d_trace(self, logger: np.ndarray):
+    def plot_3d_trace(self, logger: np.ndarray, t: float=None):
+        if t is None:
+            t = self.t_span[-1]
+        idx = int(t/self.dt)
+        idx = np.clip(idx, 0, len(self.t_span)-1)
         fig9, axs9 = plt.subplots(1, 1, sharex=True)
         axs9 = fig9.add_subplot(111, projection='3d')
-        axs9.plot3D(logger["x_d"][:, 0],
-                    logger["x_d"][:, 1],
-                    logger["x_d"][:, 2], '.', c='blue', label='Points')
-        axs9.plot3D(logger["position"][:, 0],
-                    logger["position"][:, 1],
-                    logger["position"][:, 2], 'green')
+        axs9.plot3D(logger["x_d"][:idx, 0],
+                    logger["x_d"][:idx, 1],
+                    logger["x_d"][:idx, 2], '.', c='blue', label='Points')
+        axs9.plot3D(logger["position"][:idx, 0],
+                    logger["position"][:idx, 1],
+                    logger["position"][:idx, 2], 'green')
         b1b2, b3 = plot_utils.generate_drone_profile(
-            logger["position"][-1, :], logger["pose"][-1, :, :])
+            logger["position"][idx, :], logger["pose"][idx, :, :])
         axs9.plot3D(b1b2[:, 0],
                     b1b2[:, 1],
                     b1b2[:, 2], 'red')
@@ -625,20 +630,20 @@ class Plotter:
                     b3[:, 1],
                     b3[:, 2], 'red')
         b1b2, b3 = plot_utils.generate_drone_profile(
-             logger["position"][-1, :], logger["pose_desired"][-1, :, :])
+             logger["position"][idx, :], logger["pose_desired"][idx, :, :])
         axs9.plot3D(b1b2[:, 0],
                     b1b2[:, 1],
                     b1b2[:, 2], 'orange')
         axs9.plot3D(b3[:, 0],
                     b3[:, 1],
                     b3[:, 2], 'orange')
-        b1 = np.vstack((logger["x_d"][-1, :],
-                        logger["x_d"][-1, :] + 0.5*logger["b_1d"][-1, :]))
+        b1 = np.vstack((logger["x_d"][idx, :],
+                        logger["x_d"][idx, :] + 0.5*logger["b_1d"][idx, :]))
         axs9.plot3D(b1[:, 0],
                     b1[:, 1],
                     b1[:, 2], 'purple')
-        b1 = np.vstack(( logger["position"][-1, :],
-                         logger["position"][-1, :] + 0.5*logger["b_1d"][-1, :]))
+        b1 = np.vstack(( logger["position"][idx, :],
+                         logger["position"][idx, :] + 0.5*logger["b_1d"][idx, :]))
         axs9.plot3D(b1[:, 0],
                     b1[:, 1],
                     b1[:, 2], 'purple')

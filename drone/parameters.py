@@ -25,10 +25,11 @@ class Multicopter:
             rotor_position: list of rotor position vectors in body frame FLU (different from SE(3) paper)
             is_ccw_blade: list[bool], True if blade rotates counter-clockwise from bird view (opposite to z axis body frame)
             rotor_direction: list of rotor direction vectors (optional)
+            Note: c_tau_f is not the c_m in M_z = c_m*omega_z**2. If M_z = c_m*omega_z**2, F = c_t*omega**2, then c_tau_f = c_m/c_t. 
         """
         self.m = m
         self.inertia = inertia
-        self.c_tau_f = c_tau_f
+        self.c_tau_f = c_tau_f 
         self.rotor_position = rotor_position
         self.is_ccw_blade = is_ccw_blade 
         self.num_of_rotors = len(self.rotor_position)
@@ -168,6 +169,27 @@ class PennStateARILabTarot960(Multicopter):
         self.f_motor_max = 50.0  # maximum possible thrust per motor [N] Thrust per motor: 200 - 800 grams for small drones
         self.f_motor_min = 0.1   # minimum possible thrust per motor [N]   
 
+class P600(Quadcopter):
+    """Drone of "A Highly-Efficient Hybrid Simulation System for Flight Controller Design and Evaluation of Unmanned Aerial Vehicles"
+    """
+    def __init__(self):
+        m = 3.0    # kg
+        inertia = np.diag([0.05487, 0.05487, 0.1027])  # [kgm2] 
+        num_of_rotors = 4
+        c_tau_f = 9.004e-7/4.848e-5  # convert thrust to torque in z axis [m]; this is not from their repo
+        # rotor position vectors in body frame (note that in this paper, 2 rotors are in x axis and 2 rotors are in y axis, unlike a regular drone setup)
+        p_0 = np.array([ 0.21213,  0.21213, 0.243])  # front left
+        p_1 = np.array([-0.21213,  0.21213, 0.243])  # rear left
+        p_2 = np.array([-0.21213, -0.21213, 0.243])  # rear right
+        p_3 = np.array([ 0.21213, -0.21213, 0.243])  # front right
+
+        is_ccw_blade = [False, True, False, True]  
+        super().__init__(m=m, inertia=inertia, 
+                         c_tau_f=c_tau_f, p_0=p_0, p_1=p_1, p_2=p_2, p_3=p_3, 
+                         is_ccw_blade=is_ccw_blade)
+        self.f_motor_max = 20.0  # maximum possible thrust per motor [N] 
+        self.f_motor_min = 0.1   # minimum possible thrust per motor [N]
+
 class TrackingOnSE3(Quadcopter):
     """
     parameters come from 
@@ -191,7 +213,7 @@ class TrackingOnSE3(Quadcopter):
         self.f_motor_max = 50.0  # maximum possible thrust per motor [N] Thrust per motor: 200 - 800 grams for small drones
         self.f_motor_min = 0.1   # minimum possible thrust per motor [N]
 
-class Neurobem(Drone):
+class Neurobem(Quadcopter):
     """
     From https://download.ifi.uzh.ch/rpg/NeuroBEM/
     code/simulator/include/params.h
@@ -238,6 +260,3 @@ rotor_radius = 0.2 # [m] 15inch diameter rotor
 c_d = 1.2   # unit free [0.5-1.5]   "An Experimental Study of Drag Coefficients of a Quadrotor Airframe." Table 2
 area_frontal = 0.03  # m^2 [0.01-0.1]   "An Experimental Study of Drag Coefficients of a Quadrotor Airframe." Table 2
 
-if __name__ == "__main__":
-    test_instance = TrackingOnSE3()
-    print(test_instance.m_frd_to_flu)

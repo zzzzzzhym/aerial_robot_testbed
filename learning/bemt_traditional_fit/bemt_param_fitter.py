@@ -274,7 +274,7 @@ class BemtParamFitter:
             initial_guess = np.array([5.0, 1.5, 1.5, 0.3])*1.5
         print("Initial guess:", initial_guess)
         # Define the bounds for each parameter
-        bounds = [(2.0, 10.0), (0.0, 5.0), (0.0, 5.0), (np.radians(10), np.radians(40))]
+        bounds = [(2.0, 50.0), (0.0, 50.0), (0.0, 5.0), (np.radians(10), np.radians(40))]
         if is_fine_tune:
             maxiter = 200
         else:
@@ -288,11 +288,31 @@ class BemtParamFitter:
             if step_counter["count"] % 1 == 0:
                 print(f"Step {step_counter['count']}: x = {xk}")
 
+        # x_fixed = initial_guess.copy()
+
+        # def loss_first2(z, datasets):
+        #     x = x_fixed.copy()
+        #     x[:2] = z          # only first 2 dims are optimized
+        #     return self.get_loss(x, datasets)
+
+        # # Optimize the parameters using a minimization algorithm
+        # result = minimize(
+        #     loss_first2,
+        #     x_fixed[:2],
+        #     args=(datasets,),  # args=(datasets, None, is_fine_tune),
+        #     bounds=bounds[:2],
+        #     callback=record_and_print,
+        #     method='Nelder-Mead',
+        #     options={'disp': True, 
+        #             'maxiter': maxiter,
+        #             'fatol': 1e-1}
+        # )
+
         # Optimize the parameters using a minimization algorithm
         result = minimize(
             self.get_loss,
-            initial_guess,
-            args=(datasets),  # args=(datasets, None, is_fine_tune),
+            initial_guess.copy(),
+            args=(datasets,),  # args=(datasets, None, is_fine_tune),
             bounds=bounds,
             callback=record_and_print,
             method='Nelder-Mead',

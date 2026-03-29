@@ -167,7 +167,8 @@ class WindEffectNearWall(DisturbanceForce):
     """
     def __init__(self, wall_origin=np.array([-0.5, 0, 0]), wall_norm=np.array([1, 0, 0]), wall_length=4.0, u_free=np.array([-5.0, 0.0, 0.0])) -> None:
         super().__init__()
-        self.propeller_force_table = propeller_lookup_table.PropellerLookupTable.Reader("apc_8x6_with_trail_refine")
+        self.propeller_force_table = propeller_lookup_table.PropellerLookupTable.Reader("p600_full_range")
+        # self.propeller_force_table = propeller_lookup_table.PropellerLookupTable.Reader("apc_8x6_with_trail_refine")
         self.wind_field_model = flow_pass_flat_plate.FlowPassFlatPlate.Interface(wall_norm, np.array([0.0, 0.0, 1.0]), wall_origin, wall_length)
         self.u_free_const = u_free    # in FLU inertial frame
         self.v_i_average = np.zeros(3)  # average downwash in FLU inertial frame
@@ -204,6 +205,8 @@ class WindEffectNearWall(DisturbanceForce):
             torques.append(np.cross(rotor.relative_position_inertial_frame, force))
             induced_flows.append(v_i)
             rotor.local_wind_velocity = wind_velocity  # update the local wind velocity in rotor frame
+            rotor.thrust = (rotor.pose.T@force)[2]  # update the force in rotor frame
+            rotor.f_rotor_inertial_frame = force  # update the force in inertial frame
         self.f_propeller = sum(forces)
         self.t_propeller = sum(torques)
         self.f_propeller = utils.FrdFluConverter.flip_vector(self.f_propeller)

@@ -8,6 +8,7 @@ import drone.parameters
 import drone.sensor
 import scenario
 
+
 class Factory:
     @staticmethod
     def make_scenario(trajectory: drone.trajectory.TrajectoryReference, 
@@ -40,7 +41,14 @@ class Factory:
                                disturbance_model: drone.disturbance_model.DisturbanceForce, 
                                init_state: drone.dynamics_state.State, 
                                dt_dynamics: float) -> drone.dynamics.DroneDynamics:
-        assembly = drone.dynamics.DroneDynamics(
+        # assembly = drone.dynamics.DroneDynamics(
+        #     drone_params,
+        #     propeller_params,
+        #     disturbance_model,
+        #     init_state,
+        #     dt_dynamics)
+        import external_sim.main_process
+        assembly = external_sim.main_process.P600(
             drone_params,
             propeller_params,
             disturbance_model,

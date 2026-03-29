@@ -23,7 +23,8 @@ class Manager:
             #    trajectory=drone.trajectory.RandomWaypoints(300, True), 
                trajectory= drone.trajectory.CircleYZ(),
             #    trajectory= drone.trajectory.Hover(),
-               drone_params=drone.parameters.PennStateARILab550(), 
+            #    drone_params=drone.parameters.PennStateARILab550(), 
+               drone_params=drone.parameters.P600(), 
                propeller_params=drone.propeller.apc_8x6, 
                disturbance_model=drone.disturbance_model.WallContact(),
                dt_dynamics=0.005) -> None:
