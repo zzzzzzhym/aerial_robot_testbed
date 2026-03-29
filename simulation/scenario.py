@@ -1,11 +1,36 @@
+from abc import ABC, abstractmethod
+
 import drone.trajectory
-import drone.dynamics
-import drone.controller
-import drone.sensor
+import interface
 
 class Scenario:
     def __init__(self):
-        self.dynamics: drone.dynamics.DroneDynamics = None    # assemble drone type, disturbance model, dynamics model
-        self.controller: drone.controller.DroneController = None  # assemble drone type, controller and disturbance estimator
+        self.dynamics: Dynamics = None    # assemble drone type, disturbance model, dynamics model
+        self.controller: Controller = None  # assemble drone type, controller and disturbance estimator
         self.trajectory: drone.trajectory.TrajectoryReference = None  
-        self.sensor: drone.sensor.Sensor = None
+        self.sensor: Sensor = None
+
+class Dynamics(ABC):
+    @abstractmethod
+    def step(self, t: float, controller_output: interface.ControllerOutput) -> None:
+        pass
+    
+    @abstractmethod
+    def shutdown(self):
+        pass
+
+class Controller(ABC):
+    @abstractmethod
+    def step(self, sensor_data: interface.SensorData, ref: interface.TrajectoryReference):
+        pass
+
+class Sensor(ABC):
+    @abstractmethod
+    def get_sensor_data(self, state: Dynamics, t: float) -> interface.SensorData:
+        pass
+
+class Planner(ABC):
+    @abstractmethod
+    def get_reference(self, t: float):
+        pass
+    

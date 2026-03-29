@@ -43,7 +43,7 @@ x_d_dot2:
   can_save_to_file: false
 x_d_dot3:
   can_save_to_file: false
-f_motor:
+f_motor_desired:
   can_save_to_file: false
 f_disturb:
   can_save_to_file: true    
@@ -145,6 +145,14 @@ rotor_2_f_rotor_inertial_frame:
   can_save_to_file: true
 rotor_3_f_rotor_inertial_frame:
   can_save_to_file: true
+rotor_0_thrust:
+  can_save_to_file: true
+rotor_1_thrust:
+  can_save_to_file: true
+rotor_2_thrust:
+  can_save_to_file: true
+rotor_3_thrust:
+  can_save_to_file: true
 shared_r_disk:
   can_save_to_file: true
 sensed_dv:
@@ -155,3 +163,5 @@ tip_position:
   can_save_to_file: false
 f_contact_normal:
   can_save_to_file: false
+rotor_speeds_desired:
+  can_save_to_file: true

@@ -8,9 +8,33 @@ import trajectory
 import disturbance_estimator
 import inflow_model.propeller_lookup_table as propeller_lookup_table
 import propeller
+import simulation.interface
+import simulation.scenario
 
-class DroneController:
+class DroneController(simulation.scenario.Controller):
     def __init__(self, drone: params.Multicopter) -> None:
+        # config
+        # disturbance_model_name = "wind_free_space_training_diaml"
+        disturbance_model_name = "wind_free_space_training_in_house_sim_diaml"
+        # disturbance_model_name = "wind_near_wall_wo_bemt_in_control_train_xz_wind"
+        # disturbance_model_name = "wind_near_wall_bemt_in_control_train_xz_wind"
+        # disturbance_model_name = "wind_near_wall_wo_bemt_in_control_far_from_wall"
+        # bemt_disturbance_model_name = "wind_free_space_training_bemt"
+        bemt_disturbance_model_name = "wind_free_space_training_in_house_sim_bemt"
+        # bemt_disturbance_model_name = "wind_near_wall_bemt_fitting"
+        # propeller_lookup_table_name = "apc_8x6_with_trail"
+        # propeller_lookup_table_name = "apc_8x6_fitted_in_noise_and_vibration"
+        # propeller_lookup_table_name = "p600"
+        propeller_lookup_table_name = "p600_full_range"
+        self.is_using_baseline_disturbance_estimator = False
+        self.is_using_pure_diaml_disturbance_estimator = True
+        self.is_using_bemt_disturbance_estimator = False
+        self.is_using_inflow_model = False
+        print("DroneController: using inflow model: ", self.is_using_inflow_model)
+        print("DroneController: using pure DIAML disturbance estimator: ", self.is_using_pure_diaml_disturbance_estimator)
+        print("DroneController: using baseline disturbance estimator: ", self.is_using_baseline_disturbance_estimator)
+        print("DroneController: using BEMT disturbance estimator: ", self.is_using_bemt_disturbance_estimator)
+
         self.params = drone
         self.e_x = np.array([0.0, 0.0, 0.0])
         self.e_v = np.array([0.0, 0.0, 0.0])
@@ -31,40 +55,29 @@ class DroneController:
         self.f_d = np.array([0.0, 0.0, 0.0])    # desired force in inertial frame
         self.f_d_dot = np.array([0.0, 0.0, 0.0])
         self.psi_r_rd = 0.0 # debug use only
-        self.force_motor_desired = np.array([0.0, 0.0, 0.0, 0.0])
+        self.force_motor_desired = np.array([0.0, 0.0, 0.0, 0.0])   # motor thrust in body frame, positive in -z direction of body frame
         self.force_motor_available = np.array([0.0, 0.0, 0.0, 0.0])
         self.rotation_speed = np.array([0.0, 0.0, 0.0, 0.0])
-        # self.disturbance_estimator = disturbance_estimator.DisturbanceEstimator("wind_near_wall_bemt_in_control_train_xz_wind", 0.01)
-        # self.disturbance_estimator = disturbance_estimator.DisturbanceEstimator("wind_near_wall_wo_bemt_in_control_far_from_wall", 0.01)
-        self.disturbance_estimator = disturbance_estimator.DisturbanceEstimator("wind_near_wall_wo_bemt_in_control_train_xz_wind", 0.01)
+        self.disturbance_estimator = disturbance_estimator.DisturbanceEstimator(disturbance_model_name, 0.01)
         self.f_disturb = np.array([0.0, 0.0, 0.0])
         self.torque_disturb = np.array([0.0, 0.0, 0.0])        
         self.baseline_disturbance_estimator = disturbance_estimator.BaselineDisturbanceEstimator(0.01)
         self.f_disturb_base = np.array([0.0, 0.0, 0.0])
         self.torque_disturb_base = np.array([0.0, 0.0, 0.0])
-        self.bemt_disturbance_estimator = disturbance_estimator.BemtFittedDisturbanceEstimatorV1("wind_near_wall_bemt_fitting", 0.01)
+        self.bemt_disturbance_estimator = disturbance_estimator.BemtFittedDisturbanceEstimatorV1(bemt_disturbance_model_name, 0.01)
         self.f_disturb_bemt = np.array([0.0, 0.0, 0.0])
         self.torque_disturb_bemt = np.array([0.0, 0.0, 0.0])
-        # self.propeller_force_table = propeller_lookup_table.PropellerLookupTable.Reader("apc_8x6_with_trail")
-        self.propeller_force_table = propeller_lookup_table.PropellerLookupTable.Reader("apc_8x6_fitted_in_noise_and_vibration")
+        self.propeller_force_table = propeller_lookup_table.PropellerLookupTable.Reader(propeller_lookup_table_name)
         self.propeller = propeller.apc_8x6
         self.is_warmed_up = False
         self.warm_up_count = 0
         self.warm_up_count_max = 0
-        self.is_using_baseline_disturbance_estimator = False
-        self.is_using_pure_diaml_disturbance_estimator = False
-        self.is_using_bemt_disturbance_estimator = True
-        self.is_using_inflow_model = True
-        print("DroneController: using inflow model: ", self.is_using_inflow_model)
-        print("DroneController: using pure DIAML disturbance estimator: ", self.is_using_pure_diaml_disturbance_estimator)
-        print("DroneController: using baseline disturbance estimator: ", self.is_using_baseline_disturbance_estimator)
-        print("DroneController: using BEMT disturbance estimator: ", self.is_using_bemt_disturbance_estimator)
 
         # saturation parameters
-        self.max_f_feedback = 6.0  # feedback force saturation
-        self.max_f_disturb_compensation = 6.0  # disturbance compensation force saturation
+        self.max_f_feedback = 30.0  # feedback force saturation
+        self.max_f_disturb_compensation = 30.0  # disturbance compensation force saturation
         self.b_2d_norm_min = 1e-3   # minimum norm to avoid singularity
-        self.max_torque = 2.0  # maximum torque
+        self.max_torque = 10.0  # maximum torque
         
         # internal var logging
         self.torque_feedback = np.array([0.0, 0.0, 0.0])
@@ -75,7 +88,7 @@ class DroneController:
         self.f_disturb_compensation = np.array([0.0, 0.0, 0.0])
         self.f_disturb_sensed_raw = np.array([0.0, 0.0, 0.0])
 
-    def step_controller(self, sensor_data: sensor.SensorData, ref: trajectory.TrajectoryReference):
+    def step(self, sensor_data: simulation.interface.SensorData, ref: trajectory.TrajectoryReference):
         self.step_tracking_error(sensor_data, ref)
         self.step_disturbance_estimator(sensor_data)
         # if not self.is_warmed_up:
@@ -94,7 +107,7 @@ class DroneController:
         self.step_error_function_so3(sensor_data)
         self.step_motor_output(sensor_data)
 
-    def step_disturbance_estimator(self, sensor_data: sensor.SensorData):
+    def step_disturbance_estimator(self, sensor_data: simulation.interface.SensorData):
         # tracking_error = np.zeros(6)  # assume no tracking error term in disturbance estimator
         tracking_error = np.hstack((self.e_v, np.zeros(3)))
         self.f_disturb_sensed_raw = self.get_sensed_disturbance(sensor_data)[0:3]
@@ -146,11 +159,11 @@ class DroneController:
         self.f_disturb_bemt = self.bemt_disturbance_estimator.get_disturbance_force()
         self.torque_disturb_bemt = self.bemt_disturbance_estimator.get_disturbance_torque()*0.0 # assume no angular acceleration available to estimate torque disturbance
 
-    def get_predicted_air_force(self, sensor_data: sensor.SensorData):
+    def get_predicted_air_force(self, sensor_data: simulation.interface.SensorData):
         """Get predicted air force and torque on drone from propeller lookup table.
 
         Args:
-            sensor_data (sensor.SensorData): Current sensor measurements including rotor states
+            sensor_data (simulation.interface.SensorData): Current sensor measurements including rotor states
 
         Returns:
             tuple: (f_propeller, t_propeller) - Predicted force and torque in body frame
@@ -176,7 +189,7 @@ class DroneController:
         
         return f_propeller, t_propeller
 
-    def get_sensed_disturbance(self, sensor_data: sensor.SensorData):
+    def get_sensed_disturbance(self, sensor_data: simulation.interface.SensorData):
         """Disturbance force in body frame"""
         f_disturb = (
             self.f
@@ -194,7 +207,7 @@ class DroneController:
     
         return np.hstack((f_disturb, tq_disturbance))
 
-    def step_desired_force(self, sensor_data: sensor.SensorData, ref: trajectory.TrajectoryReference, can_sense_jerk: bool=False, can_plan_jerk: bool=False):
+    def step_desired_force(self, sensor_data: simulation.interface.SensorData, ref: trajectory.TrajectoryReference, can_sense_jerk: bool=False, can_plan_jerk: bool=False):
         f_feedback = -params.Control.k_x*self.e_x - params.Control.k_v*self.e_v
         f_feedback = utils.saturate_vector_norm(f_feedback, self.max_f_feedback)
 
@@ -237,7 +250,7 @@ class DroneController:
         self.f_feedforward = f_feedforward
         self.f_disturb_compensation = f_disturb_compensation
 
-    def step_tracking_control(self, sensor_data: sensor.SensorData):
+    def step_tracking_control(self, sensor_data: simulation.interface.SensorData):
         """
         project desired force on b3 to generate control input force
         """
@@ -252,7 +265,7 @@ class DroneController:
             self.f_d@(-sensor_data.pose[:, 2])*np.cross(sensor_data.pose@sensor_data.omega, sensor_data.pose[:, 2]))
         '''
 
-    def step_attitude_control(self, sensor_data: sensor.SensorData, can_use_omega_desired_dot: bool=False):
+    def step_attitude_control(self, sensor_data: simulation.interface.SensorData, can_use_omega_desired_dot: bool=False):
         yaw_weight = 0.2
         w = np.diag([1.0, 1.0, yaw_weight]) # Mz is weaker
         torque_feedback = -params.Control.k_r*self.e_r - params.Control.k_omega*self.e_omega
@@ -318,16 +331,16 @@ class DroneController:
             self.pose_desired_dot@self.pose_desired_dot.T
         self.omega_desired_dot = utils.get_vee_map(omega_desired_dot_hat)
 
-    def step_tracking_error(self, sensor_data: sensor.SensorData, ref: trajectory.TrajectoryReference):
+    def step_tracking_error(self, sensor_data: simulation.interface.SensorData, ref: trajectory.TrajectoryReference):
         self.e_x = sensor_data.position - ref.x_d
         self.e_v = sensor_data.v - ref.v_d
 
-    def step_attitude_error(self, sensor_data: sensor.SensorData):
+    def step_attitude_error(self, sensor_data: simulation.interface.SensorData):
         self.e_r = utils.get_vee_map(
             0.5*(self.pose_desired.T@sensor_data.pose - sensor_data.pose.T@self.pose_desired))
         self.e_omega = sensor_data.omega - sensor_data.pose.T@self.omega_desired
 
-    def step_error_function_so3(self, sensor_data: sensor.SensorData):
+    def step_error_function_so3(self, sensor_data: simulation.interface.SensorData):
         '''The error function on SO(3) is defined as the angle between the desired and actual rotation matrix.
         debug purpose only, does not need to use in controller
         '''
@@ -335,8 +348,13 @@ class DroneController:
                         1 - self.pose_desired[:,1]@sensor_data.pose[:,1] +
                         1 - self.pose_desired[:,2]@sensor_data.pose[:,2])
     
-    def step_motor_output(self, sensor_data: sensor.SensorData):
+    def step_motor_output(self, sensor_data: simulation.interface.SensorData):
         self.force_motor_desired = self.params.m_wrench_to_thrust@np.hstack((self.f[2], self.torque))
+
+        # debug
+        print("check output force: ", self.force_motor_desired)
+        # print(self.params.m_thrust_to_wrench)
+
         if self.is_using_inflow_model:
             # with inflow model
             for i, thrust in enumerate(self.force_motor_desired):
@@ -357,7 +375,11 @@ class DroneController:
                     sensor_data.rotors.rotors[i].rotation_speed,
                     thrust
                 )
+        print("desired rotor speed:", self.rotation_speed)
 
     def get_control_output(self):
         """controller provides yaw torque and rotation speed because rotor yaw torque is not modeled"""
-        return self.rotation_speed, self.torque[2]
+        print("controller output torque: ", self.torque)
+        print("controller output speed: ", self.rotation_speed)
+        return simulation.interface.ControllerOutput(self.rotation_speed, np.array([0.0, 0.0, self.f[2]]), np.array([0.0, 0.0, self.torque[2]]))
+

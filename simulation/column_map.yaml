@@ -29,6 +29,11 @@ rotor_0_f_rotor_inertial_frame: 27
 rotor_1_f_rotor_inertial_frame: 28
 rotor_2_f_rotor_inertial_frame: 29
 rotor_3_f_rotor_inertial_frame: 30
-shared_r_disk: 31
-sensed_dv: 32
-sensed_omega: 33
+rotor_0_thrust: 31
+rotor_1_thrust: 32
+rotor_2_thrust: 33
+rotor_3_thrust: 34
+shared_r_disk: 35
+sensed_dv: 36
+sensed_omega: 37
+rotor_speeds_desired: 38
