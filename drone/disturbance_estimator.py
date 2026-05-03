@@ -117,7 +117,7 @@ class UnitDisturbance:
 
 class DisturbanceEstimator:
     def __init__(self, model_name: str, dt: float) -> None:
-        self.phi, h = model.load_diaml_model(model_name)
+        self.phi, h = model.load_daiml_model(model_name)
         self.phi.eval()
         self.num_of_kernals = self.phi.dim_of_output
         self.dof_of_disturbance = 6
@@ -153,7 +153,7 @@ class DisturbanceEstimator:
 
 class BemtFittedDisturbanceEstimatorV0(DisturbanceEstimator):
     def __init__(self, model_name: str, dt: float) -> None:
-        self.nn = model.load_diaml_model(model_name)
+        self.nn = model.load_daiml_model(model_name)
         self.nn.eval()
         self.num_of_kernals = 2
         self.dof_of_disturbance = 6

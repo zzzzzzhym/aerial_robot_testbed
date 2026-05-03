@@ -27,11 +27,11 @@ class DroneController(simulation.scenario.Controller):
         # propeller_lookup_table_name = "p600"
         propeller_lookup_table_name = "p600_full_range"
         self.is_using_baseline_disturbance_estimator = False
-        self.is_using_pure_diaml_disturbance_estimator = True
+        self.is_using_pure_daiml_disturbance_estimator = True
         self.is_using_bemt_disturbance_estimator = False
         self.is_using_inflow_model = False
         print("DroneController: using inflow model: ", self.is_using_inflow_model)
-        print("DroneController: using pure DIAML disturbance estimator: ", self.is_using_pure_diaml_disturbance_estimator)
+        print("DroneController: using pure DAIML disturbance estimator: ", self.is_using_pure_daiml_disturbance_estimator)
         print("DroneController: using baseline disturbance estimator: ", self.is_using_baseline_disturbance_estimator)
         print("DroneController: using BEMT disturbance estimator: ", self.is_using_bemt_disturbance_estimator)
 
@@ -214,7 +214,7 @@ class DroneController(simulation.scenario.Controller):
         f_disturb_compensation = np.array([0.0, 0.0, 0.0])
         if self.is_using_baseline_disturbance_estimator:
             f_disturb_compensation = -sensor_data.pose@self.f_disturb_base # add disturbance force
-        elif self.is_using_pure_diaml_disturbance_estimator:
+        elif self.is_using_pure_daiml_disturbance_estimator:
             f_disturb_compensation = -sensor_data.pose@self.f_disturb # add disturbance force
         elif self.is_using_bemt_disturbance_estimator:
             f_disturb_compensation = -sensor_data.pose@self.f_disturb_bemt # add disturbance force

@@ -15,8 +15,9 @@ from torch.utils.data.dataset import random_split
 
 import model
 import performance_analyzer
+import common_utils
 
-class Trainer:
+class DaimlTrainer:
     def __init__(self,
                  phi_net: model.MultilayerNet,
                  h_net: model.MultilayerNet,
@@ -34,7 +35,7 @@ class Trainer:
         self.num_of_conditions = self.h_net.dim_of_output   # should match the length of loaderset_phi and loaderset_a
         if self.num_of_conditions != len(loaderset_phi) or self.num_of_conditions != len(loaderset_a):
             raise ValueError("Number of conditions does not match the length of loaderset_phi and loaderset_a")
-        self.config = Trainer.load_config(config_file)
+        self.config = DaimlTrainer.load_config(config_file)
         self.criterion = None
         self.criterion_h = None
         self.optimizer_h = None
@@ -66,9 +67,9 @@ class Trainer:
     @staticmethod
     def load_config(config_file: str):
         """Load model configuration from YAML file"""
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(current_dir, config_file)
-        with open(config_path, 'r') as file:
+        path = common_utils.file_manager.find_path_to_folder(["learning", "config", "pure_diaml_net", "trainer_config.yaml"])
+        print(f"Loading trainer config from {os.path.relpath(path)}...")
+        with open(path, 'r') as file:
             config = yaml.safe_load(file)
         return config
 
@@ -314,12 +315,12 @@ class SimpleTrainer:
                  loaderset: list[DataLoader],
                  dim_of_label: int,
                  validation_callback: callable,
-                 config_file: str = "trainer_config.yaml",
+                 config_file: str,
                  ) -> None:
         self.simple_net = simple_net
         self.loaderset = loaderset
         self.dim_of_label = dim_of_label
-        self.config = Trainer.load_config(config_file)
+        self.config = SimpleTrainer.load_config(config_file)
         self.criterion = None
         self.optimizer = None
         self.validator_callback = validation_callback
@@ -342,9 +343,9 @@ class SimpleTrainer:
     @staticmethod
     def load_config(config_file: str):
         """Load model configuration from YAML file"""
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(current_dir, config_file)
-        with open(config_path, 'r') as file:
+        path = common_utils.file_manager.find_path_to_folder(["learning", "config", "bemt_infused_multihead_simple_net", "trainer_config.yaml"])
+        print(f"Loading trainer config from {os.path.relpath(path)}...")
+        with open(path, 'r') as file:
             config = yaml.safe_load(file)
         return config
 
@@ -419,7 +420,7 @@ class RotorNetTrainer:
         self.rotor_net = rotor_net
         self.loaderset = loaderset
         self.dim_of_label = dim_of_label
-        self.config = Trainer.load_config(config_file)
+        self.config = RotorNetTrainer.load_config(config_file)
         self.criterion = None
         self.optimizer = None
         self.validator_callback = validation_callback
@@ -442,9 +443,9 @@ class RotorNetTrainer:
     @staticmethod
     def load_config(config_file: str):
         """Load model configuration from YAML file"""
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(current_dir, config_file)
-        with open(config_path, 'r') as file:
+        path = common_utils.file_manager.find_path_to_folder(["learning", "config", "bemt_rotor_net", config_file])
+        print(f"Loading trainer config from {os.path.relpath(path)}...")
+        with open(path, 'r') as file:
             config = yaml.safe_load(file)
         return config
 

@@ -2,7 +2,7 @@ from enum import Enum
 import pipeline_adapters
 
 class ModelArchitecture(Enum):
-    DIAML = 0
+    DAIML = 0
     SIMPLE_NET = 1
     ROTOR_NET = 2
 
@@ -47,7 +47,7 @@ class TestPipeline:
         self,
         data_adapter: pipeline_adapters.Adapter,
         validator_adapter: pipeline_adapters.Adapter,
-        model_loader: pipeline_adapters.DiamlModelLoader
+        model_loader: pipeline_adapters.DaimlModelLoader
     ) -> None:
         self.data_adapter = data_adapter
         self.validator_adapter = validator_adapter
@@ -66,18 +66,18 @@ class TestPipeline:
 class PipelineFactory:
     """An abstract factory selects and instruct the detailed factories to create parts"""
     PIPELINE_BUILDERS = {
-        ModelArchitecture.DIAML: {
+        ModelArchitecture.DAIML: {
             "train": lambda: TrainingPipeline(
-                pipeline_adapters.DiamlDataFactoryAdapter(),
-                pipeline_adapters.DiamlModelFactoryAdapter(),
-                pipeline_adapters.DiamlTrainerAdapter(),
-                pipeline_adapters.DiamlValidatorAdapter(),
-                pipeline_adapters.DiamlModelSaver(),
+                pipeline_adapters.DaimlDataFactoryAdapter(),
+                pipeline_adapters.DaimlModelFactoryAdapter(),
+                pipeline_adapters.DaimlTrainerAdapter(),
+                pipeline_adapters.DaimlValidatorAdapter(),
+                pipeline_adapters.DaimlModelSaver(),
             ),
             "test": lambda: TestPipeline(
-                pipeline_adapters.DiamlDataFactoryAdapter(),
-                pipeline_adapters.DiamlValidatorAdapter(),
-                pipeline_adapters.DiamlModelLoader(),
+                pipeline_adapters.DaimlDataFactoryAdapter(),
+                pipeline_adapters.DaimlValidatorAdapter(),
+                pipeline_adapters.DaimlModelLoader(),
             ),
         },
 
@@ -128,43 +128,3 @@ class PipelineFactory:
     def make_test_pipeline(self) -> TestPipeline:
         """API for users to get the testing pipeline, the main job is to select the right adapters"""
         return self.PIPELINE_BUILDERS[self.config["model_type"]]["test"]()
-
-
-import model
-import data_factory
-import trainer
-import validator
-
-class TestManager:  # deprecated
-    def __init__(self) -> None:
-        self.data_factory_instance = None
-        self.model_factory_instance = None
-        self.trainer_instance = None        
-        self.dim_of_input = None
-        self.dim_of_label = None
-        self.num_of_conditions = None
-
-    def set_up(self,
-               data_menu: list,
-               input_label_map_file: str,
-               ) -> None:
-        self.set_up_data_factory(data_menu, input_label_map_file)
-        self.set_up_tester()
-
-    def set_up_data_factory(self, data_menu, input_label_map_file: str) -> None:
-        self.data_factory_instance = data_factory.DiamlDataFactory(
-            input_label_map_file
-        )
-        self.data_factory_instance.make_normalization_params(data_menu)
-        self.dim_of_input = len(self.data_factory_instance.input_headers)
-        self.dim_of_label = len(self.data_factory_instance.label_headers)
-        self.num_of_conditions = self.data_factory_instance.num_of_conditions # assume each data file has a unique condition
-
-    def set_up_tester(self) -> None:
-        self.tester_instance = validator.DiamlEvaluator()
-
-    def test(self, phi_net: model.MultilayerNet, h_net: model.MultilayerNet, data_menu_validation: list) -> None:
-        datasets = self.data_factory_instance.prepare_datasets(data_menu_validation, False)        
-        self.tester_instance.load_model(phi_net, h_net)
-        self.tester_instance.load_dataset(datasets)
-        self.tester_instance.test_model()
