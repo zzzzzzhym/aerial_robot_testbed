@@ -1,3 +1,0 @@
-simple_shot: 256    # batch size of the simple net training
-can_shuffle: True  # whether to shuffle the data in training
-data_usage_ratio: 1.0  # ratio of data used in training, 1.0 means all data is used

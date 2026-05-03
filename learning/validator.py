@@ -16,7 +16,7 @@ class Evaluator:
         self.datasets = None
         self.condition_labels = None
 
-    def load_dataset(self, datasets: list[data_factory.DiamlDataset | data_factory.SimpleDataset | data_factory.RotorNetDataset]):
+    def load_dataset(self, datasets: list[data_factory.DaimlDataset | data_factory.SimpleDataset | data_factory.RotorNetDataset]):
         self.datasets = datasets
         self.condition_labels = [dataset.source_file for dataset in datasets]
 
@@ -117,7 +117,6 @@ class Evaluator:
         plt.ylabel("MSE Error")
         plt.legend(title="Output Dim")
         plt.grid(axis='y')
-        plt.tight_layout()
         plt.show()
 
     def plot_nn_output(self, out: torch.Tensor):
@@ -176,7 +175,7 @@ class Evaluator:
         raise NotImplementedError("Subclasses should implement this method")
     
 
-class DiamlEvaluator(Evaluator):
+class DaimlEvaluator(Evaluator):
     def __init__(self) -> None:
         super().__init__()
         self.phi_net = None

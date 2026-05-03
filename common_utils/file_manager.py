@@ -2,8 +2,9 @@ import os
 import numpy as np
 
 def find_path_to_folder(subfolder_name: list[str]) -> str:
+    """Find the path to a folder from root folder of the repo."""
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    upper_dir = os.path.dirname(current_dir)
+    upper_dir = os.path.dirname(current_dir)    # the upper dir should be the root folder of the repo
     path = os.path.join(upper_dir, *subfolder_name)
     return path
 

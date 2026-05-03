@@ -5,6 +5,8 @@ torch.set_default_tensor_type('torch.DoubleTensor')
 import yaml
 import os
 
+import common_utils
+
 
 class MultilayerNet(nn.Module):
     """Takes config that specifies the input, hidden layer and output dimensions and makes the layers accordingly.
@@ -149,7 +151,7 @@ class AttentionBasedRotorNet(nn.Module):
         # 4) final head (you can add a Linear here)
         return self.output_head(pooled)
 
-class DiamlModelFactory:
+class DaimlModelFactory:
     def __init__(self,
                  num_of_conditions,
                  dim_of_input,
@@ -197,8 +199,8 @@ class DiamlModelFactory:
     def set_up_config(customized_config: dict = None):
         """Set up the model configuration. If customized_config is None, load the default config."""
         if customized_config is None:
-            config_path = DiamlModelFactory.get_default_config_path()
-            config = DiamlModelFactory.load_config(config_path)
+            config_path = DaimlModelFactory.get_default_config_path()
+            config = DaimlModelFactory.load_config(config_path)
         else:
             config = customized_config  # in case of loading the trained model, use the documented config at generation time
         return config
@@ -206,12 +208,13 @@ class DiamlModelFactory:
     @staticmethod
     def get_default_config_path():
         """Get the default path of the model configuration file"""
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.join(current_dir, "model_config.yaml")
+        path = common_utils.file_manager.find_path_to_folder(["learning", "config", "pure_diaml_net", "model_config.yaml"])
+        return path
 
     @staticmethod
     def load_config(config_path: str):
         """Load model configuration from YAML file"""
+        print(f"Loading model config from {os.path.relpath(config_path)}...")
         with open(config_path, 'r') as file:
             config = yaml.safe_load(file)
         return config
@@ -274,8 +277,8 @@ class SimpleNetFactory:
     def set_up_config(customized_config: dict = None):
         """Set up the model configuration. If customized_config is None, load the default config."""
         if customized_config is None:
-            config_path = DiamlModelFactory.get_default_config_path()
-            config = DiamlModelFactory.load_config(config_path)
+            config_path = SimpleNetFactory.get_default_config_path()
+            config = SimpleNetFactory.load_config(config_path)
         else:
             config = customized_config  # in case of loading the trained model, use the documented config at generation time
         return config
@@ -283,12 +286,13 @@ class SimpleNetFactory:
     @staticmethod
     def get_default_config_path():
         """Get the default path of the model configuration file"""
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.join(current_dir, "model_config.yaml")
+        path = common_utils.file_manager.find_path_to_folder(["learning", "config", "bemt_infused_multihead_simple_net", "model_config.yaml"])
+        return path
 
     @staticmethod
     def load_config(config_path: str):
         """Load model configuration from YAML file"""
+        print(f"Loading model config from {os.path.relpath(config_path)}...")
         with open(config_path, 'r') as file:
             config = yaml.safe_load(file)
         return config
@@ -370,8 +374,8 @@ class RotorNetFactory:
     def set_up_config(customized_config: dict = None):
         """Set up the model configuration. If customized_config is None, load the default config."""
         if customized_config is None:
-            config_path = DiamlModelFactory.get_default_config_path()
-            config = DiamlModelFactory.load_config(config_path)
+            config_path = RotorNetFactory.get_default_config_path()
+            config = RotorNetFactory.load_config(config_path)
         else:
             config = customized_config  # in case of loading the trained model, use the documented config at generation time
         return config
@@ -379,8 +383,8 @@ class RotorNetFactory:
     @staticmethod
     def get_default_config_path():
         """Get the default path of the model configuration file"""
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        return os.path.join(current_dir, "model_config.yaml")
+        path = common_utils.file_manager.find_path_to_folder(["learning", "config", "bemt_rotor_net", "model_config.yaml"])
+        return path
 
     @staticmethod
     def load_config(config_path: str):
@@ -403,7 +407,7 @@ class RotorNetFactory:
         }
 
 
-def save_diaml_model(name, phi_net: PhiNet, h_net: HNet, model_factory_config: dict, input_label_map: dict) -> None:
+def save_daiml_model(name, phi_net: PhiNet, h_net: HNet, model_factory_config: dict, input_label_map: dict) -> None:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         file_path = os.path.join(current_dir, "model", name + ".pth")
         torch.save({"phi": phi_net.state_dict(),
@@ -413,13 +417,13 @@ def save_diaml_model(name, phi_net: PhiNet, h_net: HNet, model_factory_config: d
                     file_path)
         print(f"Model saved to {os.path.relpath(file_path, os.getcwd())}")
 
-def load_diaml_model(name) -> tuple[PhiNet, HNet, dict]:
+def load_daiml_model(name) -> tuple[PhiNet, HNet, dict]:
     current_dir = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(current_dir, "model", name + ".pth")       
     package = torch.load(file_path)
 
     # recreate the model factory instance that generated the trained model
-    model_factory_instance = DiamlModelFactory(
+    model_factory_instance = DaimlModelFactory(
         package["model_factory_init_args"]["num_of_conditions"],
         package["model_factory_init_args"]["dim_of_input"],
         package["model_factory_init_args"]["input_mean"],

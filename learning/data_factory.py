@@ -13,8 +13,9 @@ from torch.utils.data import DataLoader, Dataset, Subset
 from torch.utils.data.dataset import random_split
 
 import normalization
+import common_utils
 
-class DiamlDataset(Dataset):
+class DaimlDataset(Dataset):
 
     def __init__(self,
         input: np.ndarray,
@@ -240,7 +241,7 @@ class TrainingDataFactory(DataFactory):
         self.label_headers = TrainingDataFactory.extract_header_from_input_label_map(self.input_label_map["label"])
         self.input_normalization, self.label_normalization = self.initialize_normalization_dict()
         self.normalization_params_file_path = TrainingDataFactory.find_path_to_normalization_params_file(input_label_map_file)
-        self.config = TrainingDataFactory.load_config("data_factory_config.yaml")        
+        self.config = TrainingDataFactory.load_config(self.get_default_config_path())        
 
     @staticmethod
     def get_map(map_file: str) -> dict:
@@ -285,16 +286,19 @@ class TrainingDataFactory(DataFactory):
         input_label_map_file_path = DataFactory.get_path_to_data_file(input_label_map_file)
         input_label_map_dir = os.path.dirname(input_label_map_file_path)
         normalization_params_file_path = os.path.join(input_label_map_dir, "normalization_params.yaml")
-        return normalization_params_file_path
+        return normalization_params_file_path 
 
     @staticmethod
-    def load_config(config_file: str):
-        """Load configuration from YAML file"""
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(current_dir, config_file)
+    def get_default_config_path():
+        raise NotImplementedError("Set default config path for specific data factory implementation")
+
+    @staticmethod
+    def load_config(config_path: str):
+        """Load model configuration from YAML file"""
+        print(f"Loading model config from {os.path.relpath(config_path)}...")
         with open(config_path, 'r') as file:
             config = yaml.safe_load(file)
-        return config    
+        return config
 
     @staticmethod
     def find_input_label_column(input_label_map: dict):
@@ -438,7 +442,7 @@ class TrainingDataFactory(DataFactory):
             fig.delaxes(axes[j])
         fig.suptitle(title)
 
-class DiamlDataFactory(TrainingDataFactory):
+class DaimlDataFactory(TrainingDataFactory):
     """Data manager is responsible for:
     1. defining the list of data to be used to train
     2. check which columns are input and which are labels
@@ -448,12 +452,18 @@ class DiamlDataFactory(TrainingDataFactory):
         super().__init__(input_label_map_file)
         self.num_of_conditions = 0
 
+    @staticmethod
+    def get_default_config_path():
+        """Get the default path of the model configuration file"""
+        path = common_utils.file_manager.find_path_to_folder(["learning", "config", "pure_diaml_net", "data_factory_config.yaml"])
+        return path
+
     def set_num_of_conditions(self, data_menu: list) -> None:
         self.num_of_conditions = len(data_menu)
 
-    def convert_sim_to_training_data(self, input_data: np.ndarray, label_data: np.ndarray, condition_id: int, file: str) -> DiamlDataset:
+    def convert_sim_to_training_data(self, input_data: np.ndarray, label_data: np.ndarray, condition_id: int, file: str) -> DaimlDataset:
         # normalize data before putting it into the dataset
-        result = DiamlDataset(input_data,   # input normalization will be done in the network
+        result = DaimlDataset(input_data,   # input normalization will be done in the network
                                  (label_data - self.label_mean_vector)*self.label_scale_vector,
                                  condition_id,
                                  self.input_mean_vector,
@@ -463,7 +473,7 @@ class DiamlDataFactory(TrainingDataFactory):
                                  file)
         return result
 
-    def prepare_datasets(self, data_menu: list, can_inspect_data: bool=False) -> list[DiamlDataset]:
+    def prepare_datasets(self, data_menu: list, can_inspect_data: bool=False) -> list[DaimlDataset]:
         """Prepare the datasets from the data menu
         Each file in the data menu is a different condition, the length of the dataset is the number of conditions"""
         datasets = []
@@ -478,7 +488,7 @@ class DiamlDataFactory(TrainingDataFactory):
             datasets.append(dataset)
         return datasets
 
-    def get_data_loaders(self, training_data: DiamlDataset) -> tuple[DataLoader, DataLoader]:
+    def get_data_loaders(self, training_data: DaimlDataset) -> tuple[DataLoader, DataLoader]:
         """Separate the dataset into two parts: part1 for phi NN and part2 for adaptation coeffecients, 
         generate a data loader for each part"""
         length = int(len(training_data)*self.config["data_usage_ratio"])
@@ -495,7 +505,7 @@ class DiamlDataFactory(TrainingDataFactory):
         a_loader = torch.utils.data.DataLoader(a_set, batch_size=self.config["a_shot"], shuffle=True)
         return phi_loader, a_loader
 
-    def prepare_loadersets(self, datasets: list[DiamlDataset]) -> tuple[list[DataLoader], list[DataLoader]]:
+    def prepare_loadersets(self, datasets: list[DaimlDataset]) -> tuple[list[DataLoader], list[DataLoader]]:
         """Generate a list of data loaders for phi and a respectively"""
         phi_set = []
         a_set = []
@@ -515,6 +525,12 @@ class DiamlDataFactory(TrainingDataFactory):
 class SimpleDataFactory(TrainingDataFactory):
     def __init__(self, input_label_map_file: str) -> None:
         super().__init__(input_label_map_file)
+
+    @staticmethod
+    def get_default_config_path():
+        """Get the default path of the model configuration file"""
+        path = common_utils.file_manager.find_path_to_folder(["learning", "config", "bemt_infused_multihead_simple_net", "data_factory_config.yaml"])
+        return path
 
     def convert_sim_to_training_data(self, input_data: np.ndarray, label_data: np.ndarray, file: str) -> SimpleDataset:
         # normalize data before putting it into the dataset
@@ -574,8 +590,14 @@ class RotorNetDataFactory(TrainingDataFactory):
         self.label_headers = TrainingDataFactory.extract_header_from_input_label_map(self.input_label_map["label"])
         self.input_normalization, self.label_normalization = self.initialize_normalization_dict()
         self.normalization_params_file_path = TrainingDataFactory.find_path_to_normalization_params_file(input_label_map_file)
-        self.config = TrainingDataFactory.load_config("data_factory_config.yaml")     
+        self.config = TrainingDataFactory.load_config(self.get_default_config_path())     
 
+    @staticmethod
+    def get_default_config_path():
+        """Get the default path of the model configuration file"""
+        path = common_utils.file_manager.find_path_to_folder(["learning", "config", "bemt_rotor_net", "data_factory_config.yaml"])
+        return path
+    
     def convert_sim_to_training_data(self, shared_input_data: np.ndarray, individual_input_data: list[np.ndarray], label_data: np.ndarray, file: str) -> SimpleDataset:
         # normalize data before putting it into the dataset
         result = RotorNetDataset(shared_input_data,   # input normalization will be done in the network

@@ -13,7 +13,7 @@ class ViNet(model.MultilayerNet):
         super().__init__(dim_of_input, dim_of_output, dim_of_layers, can_append_bias=False)   
 
 
-class ViNetFactory(model.DiamlModelFactory):
+class ViNetFactory(model.DaimlModelFactory):
     def __init__(self,
                  num_of_conditions,
                  dim_of_input,
