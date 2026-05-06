@@ -190,10 +190,10 @@ class P600(simulation.scenario.Dynamics):
         # Dof 16-18: local angular acceleration x,y,z
 
         body_state = drone.dynamics_state.State(
-            position=drone.utils.FrdFluConverter.flip_vector(np.array(body_state_data[0:3])),
-            v=drone.utils.FrdFluConverter.flip_vector(np.array(body_state_data[7:10])),   
-            pose=drone.utils.FrdFluConverter.flip_pose(drone.utils.convert_quaternion_to_rotation_matrix(np.array(body_state_data[3:7]))),
-            omega=drone.utils.FrdFluConverter.flip_vector(np.array(body_state_data[10:13])),  
+            position=np.array(body_state_data[0:3]),
+            v=np.array(body_state_data[7:10]),   
+            pose=drone.utils.convert_quaternion_to_rotation_matrix(np.array(body_state_data[3:7])),
+            omega=np.array(body_state_data[10:13]),  
         )
 
         self.rotors.step_all_rotor_states(body_state, rotation_speed)
@@ -204,13 +204,13 @@ class P600(simulation.scenario.Dynamics):
         
 
         self.state = simulation.interface.DynamicsOutput(
-            position=drone.utils.FrdFluConverter.flip_vector(np.array(body_state_data[0:3])),
-            v=drone.utils.FrdFluConverter.flip_vector(np.array(body_state_data[7:10])),   
-            pose=drone.utils.FrdFluConverter.flip_pose(drone.utils.convert_quaternion_to_rotation_matrix(np.array(body_state_data[3:7]))),
-            omega=drone.utils.FrdFluConverter.flip_vector(np.array(body_state_data[10:13])),  
-            v_dot=drone.utils.FrdFluConverter.flip_vector(np.array(body_state_data[13:16])),  
+            position=np.array(body_state_data[0:3]),
+            v=np.array(body_state_data[7:10]),   
+            pose=drone.utils.convert_quaternion_to_rotation_matrix(np.array(body_state_data[3:7])),
+            omega=np.array(body_state_data[10:13]),  
+            v_dot=np.array(body_state_data[13:16]),  
             rotors=self.rotors,   
-            omega_dot=drone.utils.FrdFluConverter.flip_vector(np.array(body_state_data[16:19]))    
+            omega_dot=np.array(body_state_data[16:19])    
         )
 
     def get_dynamics_output(self) -> simulation.interface.DynamicsOutput:

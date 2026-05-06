@@ -11,10 +11,9 @@ Date: 2024-09-22
 
 import numpy as np
 
-import parameters as params
-import propeller
-import utils
-import dynamics_state as state
+from drone import parameters as params
+from drone import propeller
+from drone import dynamics_state as state
 
 class Rotor:
     """This class manage the state of individual rotor and its relationship to the drone. It may include rotor center velocity, rotor position and rotor pose. 
@@ -69,15 +68,15 @@ class RotorSet:
         """_summary_
 
         Args:
-            drone_state (state): drone state in FRD frame
+            drone_state (state): drone state in FLU frame
             thrusts (_type_): vector of thrusts from each rotor. Note that a thrust is a scalar value
         """
         for rotor, speed in zip(self.rotors, rotation_speeds): 
-            # Convert the drone state to FLU frame before passing it to the rotor
-            rotor.step_rotor_states(utils.FrdFluConverter.flip_pose(drone_state.get_pose_in("inertial")),  
-                                    utils.FrdFluConverter.flip_vector(drone_state.get_position_in("inertial")),
-                                    utils.FrdFluConverter.flip_vector(drone_state.get_velocity_in("inertial")),
-                                    utils.FrdFluConverter.flip_vector(drone_state.get_omega_in("inertial")),
+            # Assume the drone state is in FLU frame 
+            rotor.step_rotor_states(drone_state.get_pose_in("inertial"),  
+                                    drone_state.get_position_in("inertial"),
+                                    drone_state.get_velocity_in("inertial"),
+                                    drone_state.get_omega_in("inertial"),
                                     speed)
     
 

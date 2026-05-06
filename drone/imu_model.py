@@ -1,6 +1,6 @@
 import numpy as np
 
-import parameters as params
+from drone import parameters as params
 
 
 class BandedHarmonics:

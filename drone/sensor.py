@@ -1,9 +1,10 @@
 import numpy as np
 
-import dynamics
-import imu_model
 import simulation.interface
 import simulation.scenario
+
+from drone import imu_model
+
 
 class Sensor(simulation.scenario.Sensor):
     """Converts ground-truth dynamics into simulated sensor outputs."""

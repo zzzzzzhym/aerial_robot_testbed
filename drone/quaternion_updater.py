@@ -1,7 +1,7 @@
 import numpy as np
 import quaternion
 
-import utils
+from drone import utils
 
 class QuaternionOfRotation:
     """this class handles change of rotation matrix, given a rotation operation represented by a quaternion 
@@ -13,7 +13,7 @@ class QuaternionOfRotation:
 
     def step_derivative(self, omega: np.ndarray) -> None:
         '''
-        omega need to be in interal frame
+        omega need to be in inertial frame
         q_dot = 0.5*omega_quaternion*q
         '''        
         omega_q = utils.convert_vector_to_quaternion(omega)
