@@ -64,7 +64,7 @@ class BemtParamFitter:
             "f_2": [], 
             "f_3": [], 
             "f_total": [], 
-            "f_inertial_frame_frd": []
+            "f_inertial_frame": []
         }
 
     def make_lookup_table(self, fitted_params, table_name: str, is_hover_only: bool = False):
@@ -75,7 +75,7 @@ class BemtParamFitter:
             f"cl_1 = {blade.cl_1}\n"
             f"cl_2 = {blade.cl_2}\n"
             f"cd = {blade.cd}\n"
-            f"alpha_0 = blade.alpha_0 "
+            f"alpha_0 = {blade.alpha_0}"
         )
         if is_hover_only:
             PropellerLookupTable.Maker.make_propeller_lookup_table(table_name, blade, u_free_x_range=np.array([0.0]), pitch_range=np.array([0.0]))
@@ -106,7 +106,7 @@ class BemtParamFitter:
         )
         self.bet_instance.set_integration_resolution(num_of_elements, num_of_rotation_segments)
 
-    def compute_total_force_inertial_frame_frd(self, dataset: data_factory.FittingDataset, i: int):
+    def compute_total_force_inertial_frame(self, dataset: data_factory.FittingDataset, i: int):
         f_0 = self.compute_model_thrust(dataset.u_free_0[i], 
                                 dataset.v_forward_0[i], 
                                 dataset.shared_r_disk[i], 
@@ -136,7 +136,7 @@ class BemtParamFitter:
         # torque_3 = np.cross(dataset.relative_position_inertial_frame_3[i], f_3)
 
         f = f_0 + f_1 + f_2 + f_3
-        f_inertial_frame_frd = utils.FrdFluConverter.flip_vector(dataset.shared_r_disk[i]@f)
+        f_inertial_frame = dataset.shared_r_disk[i]@f
 
         if self.can_log_and_display_data:
             self.logger["sample_index"].append(i)
@@ -145,10 +145,10 @@ class BemtParamFitter:
             self.logger["f_2"].append(f_2)
             self.logger["f_3"].append(f_3)
             self.logger["f_total"].append(f)
-            self.logger["f_inertial_frame_frd"].append(f_inertial_frame_frd)
-        return f_inertial_frame_frd
+            self.logger["f_inertial_frame"].append(f_inertial_frame)
+        return f_inertial_frame
 
-    def compute_total_force_inertial_frame_frd_with_lookup_table(self, dataset: data_factory.FittingDataset, i: int, lookup_table: propeller_lookup_table.PropellerLookupTable.Reader):
+    def compute_total_force_inertial_frame_with_lookup_table(self, dataset: data_factory.FittingDataset, i: int, lookup_table: propeller_lookup_table.PropellerLookupTable.Reader):
         f_0 = BemtParamFitter.compute_thrust_with_lookup_table(
             dataset.u_free_0[i],
             dataset.v_forward_0[i],
@@ -185,8 +185,7 @@ class BemtParamFitter:
             lookup_table
         )
 
-        f_inertial_frame_flu = f_0 + f_1 + f_2 + f_3
-        f_inertial_frame_frd = utils.FrdFluConverter.flip_vector(f_inertial_frame_flu)
+        f_inertial_frame = f_0 + f_1 + f_2 + f_3
 
 
         if self.can_log_and_display_data:
@@ -203,26 +202,26 @@ class BemtParamFitter:
             self.logger["f_2"].append(f_2)
             self.logger["f_3"].append(f_3)
             self.logger["f_total"].append(f)
-            self.logger["f_inertial_frame_frd"].append(f_inertial_frame_frd)
+            self.logger["f_inertial_frame"].append(f_inertial_frame)
 
-        return f_inertial_frame_frd
+        return f_inertial_frame
 
-    def compute_residual_force(self, f_inertial_frame_frd, a_groundtruth):
+    def compute_residual_force(self, f_inertial_frame, a_groundtruth):
         """Compute the residual force between the model thrust and the ground truth thrust.
-        Assumes a_groundtruth is in the inertial frame (FRD).
-        The residual is in the inertial frame (FRD).
+        Assumes a_groundtruth is in the inertial frame (FLU).
+        The residual is in the inertial frame (FLU).
         """
-        f_gt_inertial_frame = -self.params.m * parameters.Environment.g*np.array([0.0, 0.0, 1.0]) + self.params.m * a_groundtruth
-        f_residual = f_inertial_frame_frd - f_gt_inertial_frame
+        f_gt_inertial_frame = -self.params.m * parameters.Environment.g*np.array([0.0, 0.0, -1.0]) + self.params.m * a_groundtruth
+        f_residual = f_inertial_frame - f_gt_inertial_frame
         return f_residual
 
     def get_residual_force(self, dataset: data_factory.FittingDataset, i: int, lookup_table=None, is_using_lookup_table=False, is_in_body_frame=False):
-        """The residual is in the inertial frame (FRD)."""
+        """The residual is in the inertial frame (FLU)."""
         if is_using_lookup_table:
-            f_inertial_frame_frd = self.compute_total_force_inertial_frame_frd_with_lookup_table(dataset, i, lookup_table)
+            f_inertial_frame = self.compute_total_force_inertial_frame_with_lookup_table(dataset, i, lookup_table)
         else:
-            f_inertial_frame_frd = self.compute_total_force_inertial_frame_frd(dataset, i)
-        f_residual = self.compute_residual_force(f_inertial_frame_frd, dataset.dv[i])
+            f_inertial_frame = self.compute_total_force_inertial_frame(dataset, i)
+        f_residual = self.compute_residual_force(f_inertial_frame, dataset.dv[i])
         if is_in_body_frame:
             f_residual = dataset.shared_r_disk[i].T @ f_residual
         return f_residual
@@ -330,8 +329,8 @@ class BemtParamFitter:
             return None
 
     def compute_ground_truth(self, dataset):
-        f_total_intertial_frame_gt = [
-            (-self.params.m * parameters.Environment.g * np.array([0.0, 0.0, 1.0]) + self.params.m * dataset.dv[i])
+        f_total_inertial_frame_gt = [
+            (-self.params.m * parameters.Environment.g * np.array([0.0, 0.0, -1.0]) + self.params.m * dataset.dv[i])
             for i in range(len(dataset.dv))
         ]
         f_0_body_frame_gt = [
@@ -351,21 +350,21 @@ class BemtParamFitter:
             for i in range(len(dataset.rotor_3_f_rotor_inertial_frame))
             ]
         f_total_from_rotor_inertial_frame_gt = [
-            utils.FrdFluConverter.flip_vector(dataset.rotor_0_f_rotor_inertial_frame[i] + dataset.rotor_1_f_rotor_inertial_frame[i] + \
+            (dataset.rotor_0_f_rotor_inertial_frame[i] + dataset.rotor_1_f_rotor_inertial_frame[i] + \
             dataset.rotor_2_f_rotor_inertial_frame[i] + dataset.rotor_3_f_rotor_inertial_frame[i])
             for i in range(len(dataset.rotor_0_f_rotor_inertial_frame))
             ]
-        return f_total_intertial_frame_gt, f_0_body_frame_gt, f_1_body_frame_gt, f_2_body_frame_gt, f_3_body_frame_gt, f_total_from_rotor_inertial_frame_gt
+        return f_total_inertial_frame_gt, f_0_body_frame_gt, f_1_body_frame_gt, f_2_body_frame_gt, f_3_body_frame_gt, f_total_from_rotor_inertial_frame_gt
 
     def plot_the_fit(self, dataset):
-        f_total_intertial_frame_gt, f_0_body_frame_gt, f_1_body_frame_gt, f_2_body_frame_gt, f_3_body_frame_gt, f_total_from_rotor_inertial_frame_gt = self.compute_ground_truth(dataset)
+        f_total_inertial_frame_gt, f_0_body_frame_gt, f_1_body_frame_gt, f_2_body_frame_gt, f_3_body_frame_gt, f_total_from_rotor_inertial_frame_gt = self.compute_ground_truth(dataset)
 
         fig0, axs0 = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
 
         force_labels = ["Force X", "Force Y", "Force Z"]
         for i in range(3):
-            axs0[i].plot(self.logger["sample_index"], [f[i] for f in self.logger["f_inertial_frame_frd"]], label=f'Fitted F{["x","y","z"][i]}', linestyle='None', marker='.')
-            axs0[i].plot([f[i] for f in f_total_intertial_frame_gt], label=f'GT F{["x","y","z"][i]}', linestyle='-', marker='.')
+            axs0[i].plot(self.logger["sample_index"], [f[i] for f in self.logger["f_inertial_frame"]], label=f'Fitted F{["x","y","z"][i]}', linestyle='None', marker='.')
+            axs0[i].plot([f[i] for f in f_total_inertial_frame_gt], label=f'GT F{["x","y","z"][i]}', linestyle='-', marker='.')
             axs0[i].plot([f[i] for f in f_total_from_rotor_inertial_frame_gt], label=f'GT from Rotor F{["x","y","z"][i]}', linestyle='-', marker='.')
             axs0[i].set_ylabel(force_labels[i])
             axs0[i].legend()

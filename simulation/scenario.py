@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 import drone.trajectory
-import interface
+import simulation.interface as interface
 
 class Scenario:
     def __init__(self):

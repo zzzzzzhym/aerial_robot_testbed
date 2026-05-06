@@ -652,8 +652,6 @@ class Plotter:
         axs9.set_ylabel('Y')
         axs9.set_zlabel('Z')
         axs9.axis('equal')
-        axs9.invert_zaxis()
-        axs9.invert_yaxis()
 
     def plot_task_trajectory(self, logger: np.ndarray):
         fig10, axs10 = plt.subplots(1, 1, sharex=True)
@@ -693,8 +691,6 @@ class Plotter:
         axs10.set_ylabel('Y')
         axs10.set_zlabel('Z')
         axs10.axis('equal')
-        axs10.invert_zaxis()
-        axs10.invert_yaxis()
 
     def plot_pose_in_given_time(self, logger: np.ndarray, t: float):
         idx = int(t/self.dt)
@@ -722,8 +718,6 @@ class Plotter:
         axs9.set_ylabel('Y')
         axs9.set_zlabel('Z')
         axs9.axis('equal')
-        axs9.invert_zaxis()
-        axs9.invert_yaxis()
         axs9.legend()
         
     def animate_pose(self, logger: np.ndarray):
@@ -739,8 +733,6 @@ class Plotter:
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
         ax.axis('equal')           
-        ax.invert_zaxis()
-        ax.invert_yaxis()   
         text = ax.text2D(0.02, 0.95, '', transform=ax.transAxes)   
         delta_frame = 100
         pos = logger["position"][::delta_frame, :]

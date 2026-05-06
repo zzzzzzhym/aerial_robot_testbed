@@ -1,15 +1,16 @@
 import numpy as np
 from scipy.integrate import solve_ivp
 
-import quaternion_updater
-import parameters as params
-import utils
-import disturbance_model
-import propeller
-import rotor
-from dynamics_state import State
 import simulation.interface
 import simulation.scenario
+
+from drone import quaternion_updater
+from drone import parameters as params
+from drone import utils
+from drone import disturbance_model
+from drone import propeller
+from drone import rotor
+from drone.dynamics_state import State
 
 
 class DroneDynamics(simulation.scenario.Dynamics):
@@ -17,7 +18,7 @@ class DroneDynamics(simulation.scenario.Dynamics):
         """
         pose is a 3x3 rotation matrix from body to inertial frame
         omega is in body fix frame
-        inertial frame has front-right-down as x-y-z direction (FRD)
+        inertial frame has front-left-up as x-y-z direction (FLU)
         """
         self.drone = drone
         self.dt = dt
@@ -27,7 +28,7 @@ class DroneDynamics(simulation.scenario.Dynamics):
         self.omega_dot = np.array([0.0, 0.0, 0.0])  # in body fix frame
         self.q_dot = np.quaternion(1.0, 0.0, 0.0, 0.0)
         # input
-        self.f = np.array([0.0, 0.0, 0.0])  # propulsion force (positive in body frame -z direction); directly assigned from controller
+        self.f = np.array([0.0, 0.0, 0.0])  # propulsion force (positive in body frame z direction); directly assigned from controller
         self.torque = np.array([0.0, 0.0, 0.0]) # in body fix frame
         # disturbance
         self.disturbance = disturbance
@@ -132,7 +133,7 @@ class DroneDynamics(simulation.scenario.Dynamics):
         v = y[3:6]
         q_instance = quaternion_updater.QuaternionOfRotation(np.quaternion(y[6], y[7], y[8], y[9]))
         omega = y[10:13]
-        omega_in_inertial_frame = self.state.pose@omega
+        omega_in_inertial_frame = self.state.pose@omega # possible bug: using state.pose instead of pose computed from y may cause inconsistency
         pose = utils.convert_quaternion_to_rotation_matrix(np.array([y[6], y[7], y[8], y[9]]))
         self.disturbance.f_implicit = y[13:16]
         state = State(position, v, 
@@ -142,8 +143,8 @@ class DroneDynamics(simulation.scenario.Dynamics):
         # self.disturbance.update_explicit_wrench(t, state, self.rotors, self.f, self.torque) # may significantly increase computation time
 
         position_dot = v
-        v_dot = params.Environment.g*np.array([0.0, 0.0, 1.0]) + \
-                pose@(-self.f + self.disturbance.f_implicit + self.disturbance.f_explicit)/self.drone.m
+        v_dot = params.Environment.g*np.array([0.0, 0.0, -1.0]) + \
+                pose@(self.f + self.disturbance.f_implicit + self.disturbance.f_explicit)/self.drone.m
         q_instance.step_derivative(omega_in_inertial_frame)     # quaternion derivative takes omega in intertal frame
         omega_dot = self.drone.inertia_inv@(self.torque + self.disturbance.t_explicit + self.disturbance.t_implicit -
                                         utils.get_hat_map(omega)@self.drone.inertia@omega)

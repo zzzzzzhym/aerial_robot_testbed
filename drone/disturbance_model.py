@@ -1,14 +1,14 @@
 import numpy as np
 import warnings
 
-import parameters as params
-import dynamics_state
-import propeller
-import rotor
-import utils
 import inflow_model.propeller_lookup_table as propeller_lookup_table
 import flow_pass_object.flow_pass_flat_plate as flow_pass_flat_plate
-import disturbance_model_helper
+
+from drone import parameters as params
+from drone import dynamics_state
+from drone import propeller
+from drone import rotor
+from drone import disturbance_model_helper
 
 class DisturbanceForce:
     """Generate a force in inertial frame
@@ -209,8 +209,8 @@ class WindEffectNearWall(DisturbanceForce):
             rotor.f_rotor_inertial_frame = force  # update the force in inertial frame
         self.f_propeller = sum(forces)
         self.t_propeller = sum(torques)
-        self.f_propeller = utils.FrdFluConverter.flip_vector(self.f_propeller)
-        self.t_propeller = utils.FrdFluConverter.flip_vector(self.t_propeller)
+        self.f_propeller = self.f_propeller
+        self.t_propeller = self.t_propeller
         self.f_propeller = state.pose.T@self.f_propeller  # convert to body frame
         self.t_propeller = state.pose.T@self.t_propeller  # convert to body frame
         self.f_propeller = self.f_propeller - (-force_control)   # only the difference is considered as disturbance. postive force_control in negative z axis
@@ -236,9 +236,9 @@ class WindEffectNearWall(DisturbanceForce):
         self.t_explicit += tq_noise
 
     def get_disturbance_on_drone_body(self, state: dynamics_state.State) -> np.ndarray:
-        v_local_wind = self.wind_field_model.get_solution(self.u_free, utils.FrdFluConverter.flip_vector(state.position)) 
+        v_local_wind = self.wind_field_model.get_solution(self.u_free, state.position) 
         alpha = 0.3  # a magic number accounting the distance between drone body and the rotor
-        v_total_wind = utils.FrdFluConverter.flip_vector(self.v_i_average*alpha + v_local_wind)
+        v_total_wind = self.v_i_average*alpha + v_local_wind
         f = AirDrag.get_air_drag(v_total_wind - state.v)
         return f
     
@@ -273,11 +273,11 @@ class WallContact(DisturbanceForce):
 
     def get_vertical_distance_wall_to_tip(self, state: dynamics_state.State):
         """Negative value means penetration into the wall"""
-        self.tip_position_inertial_frame = state.position + state.pose@utils.FrdFluConverter.flip_vector(self.end_sponge.tip_position)
+        self.tip_position_inertial_frame = state.position + state.pose @ self.end_sponge.tip_position
         return (self.tip_position_inertial_frame - self.wall.wall_origin) @ self.wall.wall_norm
 
     def decompose_contact_point_velocity_on_wall(self, state: dynamics_state.State):
-        v_tip = state.v + np.cross(state.omega, state.pose@utils.FrdFluConverter.flip_vector(self.end_sponge.tip_position))
+        v_tip = state.v + np.cross(state.omega, state.pose@self.end_sponge.tip_position)
         v_normal = v_tip @ self.wall.wall_norm * self.wall.wall_norm
         v_tangential = v_tip - v_normal
         return v_tangential, v_normal
@@ -316,7 +316,7 @@ class WallContact(DisturbanceForce):
         f_rigid_contact = self.get_rigid_contact_force(p_wall_to_tip, v_contact_point_normal)
         f_sponge_contact = self.get_sponge_contact_force(p_wall_to_tip, v_contact_point_tangential)
         self.f_explicit = state.pose.T@(f_rigid_contact + f_sponge_contact)  # convert to body frame
-        self.t_explicit = np.cross(utils.FrdFluConverter.flip_vector(self.end_sponge.tip_position), self.f_explicit)  # torque in body frame
+        self.t_explicit = np.cross(self.end_sponge.tip_position, self.f_explicit)  # torque in body frame
         # debug
         # print(
         #     f"p_wall_to_tip: {p_wall_to_tip}, "

@@ -1,11 +1,11 @@
 import enum
 import numpy as np
 
-import utils
+from drone import utils
 
 
 class State:
-    """This class manage the state of the drone. The convention is in FRD frame.
+    """This class manage the state of the drone. The default convention is in FLU frame.
     """
     class Frame(enum.Enum):
         INERTIAL = 0

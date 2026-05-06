@@ -43,15 +43,6 @@ class Multicopter:
         # The following attributes are calculated based on the initialized attributes
         self.inertia_inv = np.linalg.inv(self.inertia)
         self.m_thrust_to_wrench, self.m_wrench_to_thrust = self.get_thrust_wrench_matrix()
-    
-    @staticmethod
-    def flip_between_flu_frd(vector_flu: np.ndarray):
-        """cannot use utils because of circular import"""
-        # conversion matrix between different coordinate systems
-        m_frd_flu = np.array([[1, 0, 0], 
-                              [0, -1, 0], 
-                              [0, 0, -1]])
-        return m_frd_flu@vector_flu
 
     def get_rotor_position(self):
         return self.rotor_position
@@ -66,7 +57,7 @@ class Multicopter:
         m_0 = np.ones(self.num_of_rotors)
         thrust_moment = Multicopter.construct_thrust_induced_moment(self.rotor_position)  # [3, N] moment contributions from thrust forces only
 
-        m_3 = np.array([self.c_tau_f if ccw else -self.c_tau_f for ccw in self.is_ccw_blade])   # ccw blade provides positive z axis torque to drone
+        m_3 = np.array([-self.c_tau_f if is_ccw else self.c_tau_f for is_ccw in self.is_ccw_blade])   # ccw blade provides negative z axis torque to drone
         thrust_moment[2, :] += m_3
         m_thrust_to_wrench = np.vstack((m_0, thrust_moment))
         m_wrench_to_thrust = np.linalg.inv(m_thrust_to_wrench)
@@ -81,18 +72,17 @@ class Multicopter:
             m_i = r_i x F_i
 
         where:
-            r_i: rotor position (converted to FRD)
-            F_i: thrust direction [0, 0, -1]
+            r_i: rotor position in FLU
+            F_i: thrust direction [0, 0, 1]
 
         Returns:
             np.ndarray: shape (3, N)
         """
-        unit_thrust = np.array([0.0, 0.0, -1.0])    # thrust is in negative z axis
+        unit_thrust = np.array([0.0, 0.0, 1.0])    # thrust is in positive z axis
 
         moment_list = []
         for p in rotor_position:
-            p_frd = Multicopter.flip_between_flu_frd(p)
-            moment = np.cross(p_frd, unit_thrust)
+            moment = np.cross(p, unit_thrust)
             moment_list.append(moment)
 
         return np.array(moment_list).T   # shape (3, N)
@@ -202,10 +192,10 @@ class TrackingOnSE3(Quadcopter):
         num_of_rotors = 4
         c_tau_f = 8.004e-4  # convert thrust to torque in z axis [m]
         # rotor position vectors in body frame (note that in this paper, 2 rotors are in x axis and 2 rotors are in y axis, unlike a regular drone setup)
-        p_0 = self.flip_between_flu_frd(np.array([d, 0, 0]))     # positive x
-        p_1 = self.flip_between_flu_frd(np.array([0, d, 0]))     # positive y
-        p_2 = self.flip_between_flu_frd(np.array([-d, 0, 0]))    # negative x
-        p_3 = self.flip_between_flu_frd(np.array([0, -d, 0]))    # negative y
+        p_0 = np.array([d, 0, 0])     # positive x
+        p_1 = np.array([0, d, 0])     # positive y
+        p_2 = np.array([-d, 0, 0])    # negative x
+        p_3 = np.array([0, -d, 0])    # negative y
         is_ccw_blade = [False, True, False, True]  
         super().__init__(m=m, inertia=inertia, 
                          c_tau_f=c_tau_f, p_0=p_0, p_1=p_1, p_2=p_2, p_3=p_3, 
@@ -225,10 +215,10 @@ class Neurobem(Quadcopter):
         num_of_rotors = 4
         c_tau_f = 8.004e-4  # convert thrust to torque in z axis [m]; this is not from their repo
         # rotor position vectors in body frame (note that in this paper, 2 rotors are in x axis and 2 rotors are in y axis, unlike a regular drone setup)
-        p_0 = self.flip_between_flu_frd(np.array([d, 0, 0]))     # positive x
-        p_1 = self.flip_between_flu_frd(np.array([0, d, 0]))     # positive y
-        p_2 = self.flip_between_flu_frd(np.array([-d, 0, 0]))    # negative x
-        p_3 = self.flip_between_flu_frd(np.array([0, -d, 0]))    # negative y
+        p_0 = np.array([d, 0, 0])     # positive x
+        p_1 = np.array([0, d, 0])     # positive y
+        p_2 = np.array([-d, 0, 0])    # negative x
+        p_3 = np.array([0, -d, 0])    # negative y
         is_ccw_blade = [False, True, False, True]  
         super().__init__(m=m, inertia=inertia, num_of_rotors=num_of_rotors, 
                          c_tau_f=c_tau_f, p_0=p_0, p_1=p_1, p_2=p_2, p_3=p_3, 

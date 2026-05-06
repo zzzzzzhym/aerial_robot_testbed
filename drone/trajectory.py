@@ -2,8 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt     # test only
 
 from trajectory_generation import flight_map
-import parameters as params
 import simulation.plot_utils as plot_utils
+
+from drone import parameters as params
+
 
 class TrajectoryReference:
     """Base class for trajectory reference generation. Derived classes should implement step_reference_state method.
@@ -91,6 +93,13 @@ class Figure8(TrajectoryReference):
     def step_reference_state(self, t) -> None:
         self.x_d, self.v_d, self.x_d_dot2, self.x_d_dot3, self.x_d_dot4 = self.trajectory.read_data_by_time(t)   
         self.x_d[0] = self.x_d[0] - self.x_min
+
+        # debug use: flip the trajectory to test old FRD setup
+        self.x_d[2] = -self.x_d[2]
+        self.v_d[2] = -self.v_d[2]
+        self.x_d_dot2[2] = -self.x_d_dot2[2]
+        self.x_d_dot3[2] = -self.x_d_dot3[2]
+        self.x_d_dot4[2] = -self.x_d_dot4[2]
 
 class SpiralAndSpin(TrajectoryReference):
     def step_reference_state(self, t) -> None:

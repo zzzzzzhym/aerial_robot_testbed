@@ -1,33 +1,33 @@
 import numpy as np
 import warnings
 
-import utils
-import sensor
-import parameters as params
-import trajectory
-import disturbance_estimator
 import inflow_model.propeller_lookup_table as propeller_lookup_table
-import propeller
 import simulation.interface
 import simulation.scenario
+
+from drone import utils
+from drone import parameters as params
+from drone import trajectory
+from drone import disturbance_estimator
+from drone import propeller
 
 class DroneController(simulation.scenario.Controller):
     def __init__(self, drone: params.Multicopter) -> None:
         # config
         # disturbance_model_name = "wind_free_space_training_diaml"
-        disturbance_model_name = "wind_free_space_training_in_house_sim_diaml"
-        # disturbance_model_name = "wind_near_wall_wo_bemt_in_control_train_xz_wind"
+        # disturbance_model_name = "wind_free_space_training_in_house_sim_diaml"
+        disturbance_model_name = "wind_near_wall_wo_bemt_in_control_train_xz_wind"
         # disturbance_model_name = "wind_near_wall_bemt_in_control_train_xz_wind"
         # disturbance_model_name = "wind_near_wall_wo_bemt_in_control_far_from_wall"
         # bemt_disturbance_model_name = "wind_free_space_training_bemt"
-        bemt_disturbance_model_name = "wind_free_space_training_in_house_sim_bemt"
-        # bemt_disturbance_model_name = "wind_near_wall_bemt_fitting"
+        # bemt_disturbance_model_name = "wind_free_space_training_in_house_sim_bemt"
+        bemt_disturbance_model_name = "wind_near_wall_bemt_fitting"
         # propeller_lookup_table_name = "apc_8x6_with_trail"
         # propeller_lookup_table_name = "apc_8x6_fitted_in_noise_and_vibration"
         # propeller_lookup_table_name = "p600"
         propeller_lookup_table_name = "p600_full_range"
         self.is_using_baseline_disturbance_estimator = False
-        self.is_using_pure_daiml_disturbance_estimator = True
+        self.is_using_pure_daiml_disturbance_estimator = False
         self.is_using_bemt_disturbance_estimator = False
         self.is_using_inflow_model = False
         print("DroneController: using inflow model: ", self.is_using_inflow_model)
@@ -49,13 +49,13 @@ class DroneController(simulation.scenario.Controller):
         self.omega_desired_dot = np.array([0.0, 0.0, 0.0])
         self.b_3d = np.array([0.0, 0.0, 0.0])
         self.b_2d = np.array([0.0, 0.0, 0.0])
-        self.f = np.array([0.0, 0.0, 0.0])  # propulsion force, positive in -z direction of body frame. same convention as the paper
+        self.f = np.array([0.0, 0.0, 0.0])  # propulsion force, positive in +z direction of body frame.
         self.f_dot = np.array([0.0, 0.0, 0.0])
         self.torque = np.array([0.0, 0.0, 0.0])
         self.f_d = np.array([0.0, 0.0, 0.0])    # desired force in inertial frame
         self.f_d_dot = np.array([0.0, 0.0, 0.0])
         self.psi_r_rd = 0.0 # debug use only
-        self.force_motor_desired = np.array([0.0, 0.0, 0.0, 0.0])   # motor thrust in body frame, positive in -z direction of body frame
+        self.force_motor_desired = np.array([0.0, 0.0, 0.0, 0.0])   # motor thrust in body frame, positive in z direction of body frame
         self.force_motor_available = np.array([0.0, 0.0, 0.0, 0.0])
         self.rotation_speed = np.array([0.0, 0.0, 0.0, 0.0])
         self.disturbance_estimator = disturbance_estimator.DisturbanceEstimator(disturbance_model_name, 0.01)
@@ -182,8 +182,6 @@ class DroneController(simulation.scenario.Controller):
             torques.append(np.cross(rotor.relative_position_inertial_frame, force))
         f_propeller = sum(forces)
         t_propeller = sum(torques)
-        f_propeller = utils.FrdFluConverter.flip_vector(f_propeller)
-        t_propeller = utils.FrdFluConverter.flip_vector(t_propeller)
         f_propeller = sensor_data.pose.T@f_propeller  # convert to body frame
         t_propeller = sensor_data.pose.T@t_propeller  # convert to body frame
         
@@ -192,10 +190,10 @@ class DroneController(simulation.scenario.Controller):
     def get_sensed_disturbance(self, sensor_data: simulation.interface.SensorData):
         """Disturbance force in body frame"""
         f_disturb = (
-            self.f
+            -self.f
             + sensor_data.pose.T @ (
             sensor_data.v_dot * self.params.m
-            - self.params.m * params.Environment.g * np.array([0.0, 0.0, 1.0])
+            - self.params.m * params.Environment.g * np.array([0.0, 0.0, -1.0])
             )
         )
 
@@ -221,13 +219,13 @@ class DroneController(simulation.scenario.Controller):
 
         f_disturb_compensation = utils.saturate_vector_norm(f_disturb_compensation, self.max_f_disturb_compensation)
 
-        e3 = np.array([0.0, 0.0, 1.0])
-        f_feedforward = -self.params.m*params.Environment.g*e3 + self.params.m*ref.x_d_dot2
+        e3_negative = np.array([0.0, 0.0, -1.0])
+        f_feedforward = -self.params.m*params.Environment.g*e3_negative + self.params.m*ref.x_d_dot2
         self.f_d = f_feedback + f_feedforward + f_disturb_compensation
         if np.abs(self.f_d@self.f_d) < 0.0001:
             warnings.warn("DroneController: f_d too close to 0")
-            self.f_d = -0.0001*e3    # z positive points down
-        self.e_a = (sensor_data.pose@(-self.f) + self.params.m*params.Environment.g*e3)/self.params.m - ref.x_d_dot2
+            self.f_d = -0.0001*e3_negative    # small upward force direction
+        self.e_a = (sensor_data.pose@self.f + self.params.m*params.Environment.g*e3_negative)/self.params.m - ref.x_d_dot2
         if can_plan_jerk:
             self.f_d_dot = (-params.Control.k_x*self.e_v - params.Control.k_v *
                             self.e_a + self.params.m*ref.x_d_dot3)
@@ -235,7 +233,7 @@ class DroneController(simulation.scenario.Controller):
             self.f_d_dot = (-params.Control.k_x*self.e_v - params.Control.k_v *
                             self.e_a)
         if can_sense_jerk:
-            self.e_j = sensor_data.pose@(-self.f_dot)/self.params.m - ref.x_d_dot3
+            self.e_j = sensor_data.pose@self.f_dot/self.params.m - ref.x_d_dot3
         else:
             self.e_j = np.array([0.0, 0.0, 0.0])
         if can_plan_jerk:
@@ -251,19 +249,38 @@ class DroneController(simulation.scenario.Controller):
         self.f_disturb_compensation = f_disturb_compensation
 
     def step_tracking_control(self, sensor_data: simulation.interface.SensorData):
+        self.f, self.f_dot = DroneController.project_desired_force_to_body_thrust(
+            self.f_d,
+            self.f_d_dot,
+            sensor_data.pose,
+            sensor_data.omega,
+        )
+
+    @staticmethod
+    def project_desired_force_to_body_thrust(f_d, f_d_dot, pose, omega_body):
         """
         project desired force on b3 to generate control input force
+        """        
+        e3 = np.array([0.0, 0.0, 1.0])
+        b3 = pose[:, 2]
+        b3_dot = np.cross(pose @ omega_body, b3)
+
+        f = (f_d @ b3) * e3
+        f_dot = (
+            (f_d_dot @ b3) * e3
+            + (f_d @ b3_dot) * e3
+            + (f_d @ b3) * np.cross(omega_body, e3)
+        )
+        
         """
-        self.f = self.f_d@(-sensor_data.pose[:, 2])*np.array([0.0, 0.0, 1.0])
-        self.f_dot = self.f_d_dot@(-sensor_data.pose[:, 2])*np.array([0.0, 0.0, 1.0]) + \
-            self.f_d@np.cross(sensor_data.pose@sensor_data.omega, -sensor_data.pose[:, 2])*np.array([0.0, 0.0, 1.0]) + \
-            self.f_d@(-sensor_data.pose[:, 2])*np.cross(sensor_data.omega, np.array([0.0, 0.0, 1.0]))
-        '''
-        Or equivalently
-        self.f_dot = sensor_data.pose.T@(self.f_d_dot@(-sensor_data.pose[:, 2])*(sensor_data.pose[:, 2]) + \
-            self.f_d@np.cross(sensor_data.pose@sensor_data.omega, -sensor_data.pose[:, 2])*(sensor_data.pose[:, 2]) + \
-            self.f_d@(-sensor_data.pose[:, 2])*np.cross(sensor_data.pose@sensor_data.omega, sensor_data.pose[:, 2]))
-        '''
+        Or equivalently, convert self.f into world frame first: self.f_world = sensor_data.pose @ self.f, then take derivative in world frame, and convert back to body frame:
+        self.f_dot = sensor_data.pose.T @ (
+            (self.f_d_dot @ b3) * b3
+            + (self.f_d @ b3_dot) * b3
+            + (self.f_d @ b3) * ((sensor_data.pose @ sensor_data.omega) @ b3)
+        )
+        """
+        return f, f_dot
 
     def step_attitude_control(self, sensor_data: simulation.interface.SensorData, can_use_omega_desired_dot: bool=False):
         yaw_weight = 0.2
@@ -290,8 +307,8 @@ class DroneController(simulation.scenario.Controller):
         self.torque_feedforward = torque_feedforward
 
     def step_desired_pose(self, ref: trajectory.TrajectoryReference):
-        b_3d, b_3d_dot, b_3d_dot2 = utils.get_unit_vector_derivatives(-self.f_d,
-                                                                      -self.f_d_dot, -self.f_d_dot2)
+        b_3d, b_3d_dot, b_3d_dot2 = utils.get_unit_vector_derivatives(self.f_d,
+                                                                      self.f_d_dot, self.f_d_dot2)
         self.b_3d = b_3d
         b_2d_unnormalized = np.cross(self.b_3d, ref.b_1d)
         norm_proj = np.linalg.norm(b_2d_unnormalized)
@@ -381,5 +398,5 @@ class DroneController(simulation.scenario.Controller):
         """controller provides yaw torque and rotation speed because rotor yaw torque is not modeled"""
         print("controller output torque: ", self.torque)
         print("controller output speed: ", self.rotation_speed)
-        return simulation.interface.ControllerOutput(self.rotation_speed, np.array([0.0, 0.0, self.f[2]]), np.array([0.0, 0.0, self.torque[2]]))
+        return simulation.interface.ControllerOutput(self.rotation_speed, np.array([0.0, 0.0, self.f[2]]), self.torque)
 
