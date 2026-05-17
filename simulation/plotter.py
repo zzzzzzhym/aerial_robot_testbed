@@ -13,7 +13,7 @@ class Plotter:
     def make_plots(self, logger_output: np.ndarray, has_animation=False):
         # plot
         self.plot_3d_trace(logger_output)
-        self.plot_trajectory(logger_output)
+        self.plot_trajectory_tracking(logger_output)
         self.plot_rotor(logger_output)
         # self.plot_position_and_derivatives(logger_output)
         # self.plot_omega_and_derivatives(logger_output)
@@ -31,7 +31,86 @@ class Plotter:
         if has_animation:
             self.ani = self.animate_pose(logger_output)
 
+    def plot_trajectory_tracking(self, logger: np.ndarray):
+        fig, axs = plt.subplots(3, 3, sharex=True, figsize=(14, 9))
+        fig.suptitle('position_tracking')
+
+        state_labels = ['x', 'y', 'z']
+
+        # ===== position =====
+        for i in range(3):
+            actual_line = axs[i, 0].plot(
+                self.t_span,
+                logger["position"][:, i],
+                linestyle='-',
+                label='actual'
+            )[0]
+
+            axs[i, 0].plot(
+                self.t_span,
+                logger["x_d"][:, i],
+                linestyle='--',
+                color=actual_line.get_color(),
+                label='planned'
+            )
+
+            axs[i, 0].set_ylabel(state_labels[i])
+
+        # ===== velocity =====
+        for i in range(3):
+            actual_line = axs[i, 1].plot(
+                self.t_span,
+                logger["v"][:, i],
+                linestyle='-',
+                label='actual'
+            )[0]
+
+            axs[i, 1].plot(
+                self.t_span,
+                logger["v_d"][:, i],
+                linestyle='--',
+                color=actual_line.get_color(),
+                label='planned'
+            )
+
+            axs[i, 1].set_ylabel(f'v_{state_labels[i]}')
+
+        # ===== acceleration =====
+        for i in range(3):
+            actual_line = axs[i, 2].plot(
+                self.t_span,
+                logger["dv"][:, i],
+                linestyle='-',
+                label='actual'
+            )[0]
+
+            axs[i, 2].plot(
+                self.t_span,
+                logger["x_d_dot2"][:, i],
+                linestyle='--',
+                color=actual_line.get_color(),
+                label='planned'
+            )
+
+            axs[i, 2].set_ylabel(f'a_{state_labels[i]}')
+
+        # ===== titles =====
+        axs[0, 0].set_title('position')
+        axs[0, 1].set_title('velocity')
+        axs[0, 2].set_title('acceleration')
+
+        # ===== legends =====
+        for j in range(3):
+            axs[0, j].legend()
+
+        # ===== x labels =====
+        for ax in axs[-1, :]:
+            ax.set_xlabel('time [s]')
+
+        plt.tight_layout()
+
     def plot_position_and_derivatives(self, logger: np.ndarray):
+        """This plot checks the consistency of dynamics ODE"""
         fig, axs = plt.subplots(3, 4, sharex=True)
         fig.suptitle('position_and_derivatives')
         axs[0, 0].plot(self.t_span, logger["position"][:, 0], marker='x')
@@ -134,6 +213,7 @@ class Plotter:
         axs1[2, 5].plot(self.t_span, logger["pose_dot"][:, 2, 2], marker='x')
 
     def plot_trajectory(self, logger: np.ndarray):
+        """Trajectory only, includes planned jerk"""
         fig, axs = plt.subplots(3, 4, sharex=True)
         fig.suptitle('trajectory')
         axs[0, 0].plot(self.t_span, logger["x_d"][:, 0], marker='.')

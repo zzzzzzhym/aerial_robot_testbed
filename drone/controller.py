@@ -368,10 +368,6 @@ class DroneController(simulation.scenario.Controller):
     def step_motor_output(self, sensor_data: simulation.interface.SensorData):
         self.force_motor_desired = self.params.m_wrench_to_thrust@np.hstack((self.f[2], self.torque))
 
-        # debug
-        print("check output force: ", self.force_motor_desired)
-        # print(self.params.m_thrust_to_wrench)
-
         if self.is_using_inflow_model:
             # with inflow model
             for i, thrust in enumerate(self.force_motor_desired):
@@ -392,11 +388,8 @@ class DroneController(simulation.scenario.Controller):
                     sensor_data.rotors.rotors[i].rotation_speed,
                     thrust
                 )
-        print("desired rotor speed:", self.rotation_speed)
 
     def get_control_output(self):
         """controller provides yaw torque and rotation speed because rotor yaw torque is not modeled"""
-        print("controller output torque: ", self.torque)
-        print("controller output speed: ", self.rotation_speed)
         return simulation.interface.ControllerOutput(self.rotation_speed, np.array([0.0, 0.0, self.f[2]]), self.torque)
 
