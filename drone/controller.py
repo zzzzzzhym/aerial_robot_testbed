@@ -14,22 +14,22 @@ from drone import propeller
 class DroneController(simulation.scenario.Controller):
     def __init__(self, drone: params.Multicopter) -> None:
         # config
-        # disturbance_model_name = "wind_free_space_training_diaml"
+        disturbance_model_name = "wind_free_space_training_diaml"
         # disturbance_model_name = "wind_free_space_training_in_house_sim_diaml"
-        disturbance_model_name = "wind_near_wall_wo_bemt_in_control_train_xz_wind"
+        # disturbance_model_name = "wind_near_wall_wo_bemt_in_control_train_xz_wind"
         # disturbance_model_name = "wind_near_wall_bemt_in_control_train_xz_wind"
         # disturbance_model_name = "wind_near_wall_wo_bemt_in_control_far_from_wall"
-        # bemt_disturbance_model_name = "wind_free_space_training_bemt"
+        bemt_disturbance_model_name = "wind_free_space_training_bemt"
         # bemt_disturbance_model_name = "wind_free_space_training_in_house_sim_bemt"
-        bemt_disturbance_model_name = "wind_near_wall_bemt_fitting"
+        # bemt_disturbance_model_name = "wind_near_wall_bemt_fitting"
         # propeller_lookup_table_name = "apc_8x6_with_trail"
         # propeller_lookup_table_name = "apc_8x6_fitted_in_noise_and_vibration"
         # propeller_lookup_table_name = "p600"
         propeller_lookup_table_name = "p600_full_range"
-        self.is_using_baseline_disturbance_estimator = False
+        self.is_using_baseline_disturbance_estimator = True
         self.is_using_pure_daiml_disturbance_estimator = False
         self.is_using_bemt_disturbance_estimator = False
-        self.is_using_inflow_model = False
+        self.is_using_inflow_model = True
         print("DroneController: using inflow model: ", self.is_using_inflow_model)
         print("DroneController: using pure DAIML disturbance estimator: ", self.is_using_pure_daiml_disturbance_estimator)
         print("DroneController: using baseline disturbance estimator: ", self.is_using_baseline_disturbance_estimator)

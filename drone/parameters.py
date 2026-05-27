@@ -240,7 +240,7 @@ class EndEffector:
 
 class Control:
     """Control parameters"""
-    k_x = 16
+    k_x = 32
     k_v = 5.6
     k_r = 8.81
     k_omega = 2.54
