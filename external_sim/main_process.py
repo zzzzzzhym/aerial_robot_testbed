@@ -54,10 +54,10 @@ class P600(simulation.scenario.Dynamics):
         self.sensor = self.main_api.get_object('p600/core/info')
 
         self.flow_sensor_getters = [
-            self.main_api.get_object('p600/fl/flow_sensor'),
-            self.main_api.get_object('p600/bl/flow_sensor'),
-            self.main_api.get_object('p600/br/flow_sensor'),
-            self.main_api.get_object('p600/fr/flow_sensor')]
+            self.main_api.get_object('p600/flow_sensor_fl'),
+            self.main_api.get_object('p600/flow_sensor_bl'),
+            self.main_api.get_object('p600/flow_sensor_br'),
+            self.main_api.get_object('p600/flow_sensor_fr')]
 
         self.motor_speed_setter_hub0_cw = self.main_api.get_object('p600/fl/motor_speed_control')
         self.motor_speed_setter_hub1_ccw = self.main_api.get_object('p600/bl/motor_speed_control')
@@ -84,6 +84,9 @@ class P600(simulation.scenario.Dynamics):
             self.main_api.get_object('p600/br/rotor_speed_sensor'),
             self.main_api.get_object('p600/fr/rotor_speed_sensor')
         ]
+
+        self.end_effector_force_getters = self.main_api.get_object('p600/end_effector/force_sensor')
+        
 
         block_fluid = self.main_api.get_system_by_name('Blocks Fluid')
         wind_speed = disturbance.u_free
@@ -150,6 +153,18 @@ class P600(simulation.scenario.Dynamics):
         }
     
     def set_motor_throttles(self, speeds: np.ndarray):
+        # speeds = np.array([1,1,1,1])*450
+        # t = self.i*self.dt  
+
+        # omega_mean = 250
+        # omega_amp = 200
+        # period = 1.0
+
+        # omega = omega_mean + omega_amp * np.sin(
+        #     2 * np.pi * t / period
+        # )
+
+        # speeds = np.ones(4) * omega
         throttles = self.motor_model.speed_to_throttle(speeds)
         # k = 0.5
         # throttles = [k, k, k, k]
@@ -179,6 +194,9 @@ class P600(simulation.scenario.Dynamics):
     def get_wind_speed(self, reply):
         return np.array([reply.get_output_of(getter) for getter in self.flow_sensor_getters])
 
+    def get_end_effector_force(self, reply):
+        print(reply.get_output_of(self.end_effector_force_getters))
+
     def save_dynamics_state(self, body_state_data, flow_speeds, rotation_speed, rotor_thrusts):
         # body_state_data:
         # Dofs: 19
@@ -195,6 +213,8 @@ class P600(simulation.scenario.Dynamics):
             pose=drone.utils.convert_quaternion_to_rotation_matrix(np.array(body_state_data[3:7])),
             omega=np.array(body_state_data[10:13]),  
         )
+
+        print("flow speeds: ", flow_speeds)
 
         self.rotors.step_all_rotor_states(body_state, rotation_speed)
         for flow_speed, rotor in zip(flow_speeds, self.rotors.rotors):
@@ -229,7 +249,7 @@ class P600(simulation.scenario.Dynamics):
         reply = self.main_api.simulate_until(
             t + self.dt,  
             world_intput, 
-            [self.sensor, *self.flow_sensor_getters, *self.rotor_force_getters, *self.rotor_speed_getters])
+            [self.sensor, *self.flow_sensor_getters, *self.rotor_force_getters, *self.rotor_speed_getters, self.end_effector_force_getters])
 
         if reply.is_failed():
             raise RuntimeError('Simulation failed!')
@@ -240,6 +260,7 @@ class P600(simulation.scenario.Dynamics):
                                      self.get_wind_speed(reply), 
                                      self.get_motor_speed(reply),
                                      self.get_rotor_thrust(reply))
+            self.get_end_effector_force(reply)
             
 
     def shutdown(self):

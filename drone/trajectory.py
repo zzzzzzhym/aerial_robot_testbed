@@ -199,6 +199,15 @@ class StraightX(TrajectoryReference):
         self.v_d = np.array([0.4,
                              0.0,
                              0.0])       
+          
+class StraightNegativeX(TrajectoryReference):
+    def step_reference_state(self, t) -> None:
+        self.x_d = np.array([-0.4*t,
+                             0.0,
+                             0.0])
+        self.v_d = np.array([-0.4,
+                             0.0,
+                             0.0])       
         
 class CircleYZ(TrajectoryReference):
     def step_reference_state(self, t) -> None:
