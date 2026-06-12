@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+from matplotlib.colors import Normalize
 
 import plot_utils
 import drone.utils as utils
@@ -27,6 +28,8 @@ class Plotter:
         self.plot_pose_desired(logger_output)
         self.plot_omega_desired(logger_output)
         self.plot_disturbance_force(logger_output)
+        self.plot_2d_xz_yz_trace(logger_output)
+        self.plot_contact_force(logger_output)
         self.plot_task_trajectory(logger_output)
         if has_animation:
             self.ani = self.animate_pose(logger_output)
@@ -732,6 +735,81 @@ class Plotter:
         axs9.set_ylabel('Y')
         axs9.set_zlabel('Z')
         axs9.axis('equal')
+
+    def plot_2d_xz_yz_trace(self, logger: np.ndarray, wall_x: float = 0.0, is_figure8=True):
+
+        plt.rcParams["font.family"] = "serif"
+        plt.rcParams["font.serif"] = ["Times New Roman"]
+        plt.rcParams["mathtext.fontset"] = "stix"
+
+        rms_normal_force = np.sqrt(np.mean(logger["f_contact_normal"][:, 2]**2 + logger["f_contact_normal"][:, 1]**2 + logger["f_contact_normal"][:, 0]**2))
+        print(f"RMS normal contact force: {rms_normal_force:.3f} N")
+
+        fig = plt.figure(figsize=(10, 6))
+        gs = fig.add_gridspec(1, 2, width_ratios=[1.0, 1.0])
+
+        ax0 = fig.add_subplot(gs[0, 0])
+        ax1 = fig.add_subplot(gs[0, 1], sharey=ax0)
+
+        ax0.plot(logger["x_d"][:, 0], logger["x_d"][:, 2], 'b-')
+        ax0.plot(logger["position"][:, 0], logger["position"][:, 2], 'g-')
+        ax0.axvline(x=wall_x, color='k', linewidth=4.0)
+        ax0.set_xlabel(r"$x$ [m]", fontsize=22)
+        ax0.set_ylabel(r"$z$ [m]", fontsize=22)
+        ax0.grid(True)
+
+        ax1.plot(logger["x_d"][:, 1], logger["x_d"][:, 2], 'b-')
+        ax1.plot(logger["position"][:, 1], logger["position"][:, 2], 'g-')
+        ax1.set_xlabel(r"$y$ [m]", fontsize=22)
+        ax1.grid(True)
+
+        from matplotlib.collections import LineCollection
+        import matplotlib.cm as cm
+
+        tip_y = logger["tip_position"][:, 1]
+        tip_z = logger["tip_position"][:, 2]
+
+        f_normal = logger["f_contact_normal"]
+        if f_normal.ndim == 1:
+            f_mag = np.abs(f_normal)
+        else:
+            f_mag = np.linalg.norm(f_normal, axis=1)
+
+        points = np.column_stack((tip_y, tip_z)).reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+        norm = Normalize(vmin=np.min(f_mag), vmax=np.max(f_mag))
+        lc = LineCollection(segments, cmap=cm.Reds, norm=norm)
+        lc.set_array(f_mag)
+        lc.set_linewidth(2.0)
+        ax1.add_collection(lc)
+
+        ax1.yaxis.set_ticks_position('left')
+        ax1.yaxis.set_label_position('left')
+        ax1.tick_params(labelright=False)
+
+        ax0.set_ylim(-1.0, 0.4)
+        ax1.set_ylim(-1.0, 0.4)
+        ax0.set_aspect('equal', adjustable='box')
+        ax1.set_aspect('equal', adjustable='box')
+
+    def plot_contact_force(self, logger: np.ndarray):
+        f = logger["f_contact_normal"]
+        f_mag = np.linalg.norm(f, axis=1)
+
+        fig, axs = plt.subplots(4, 1, sharex=True, figsize=(10, 8))
+        fig.suptitle('Contact Force (inertial frame)')
+
+        labels = ['x', 'y', 'z']
+        for i in range(3):
+            axs[i].plot(self.t_span, f[:, i])
+            axs[i].set_ylabel(rf"$f_{{{labels[i]}}}$ [N]")
+            axs[i].grid(True)
+
+        axs[3].plot(self.t_span, f_mag)
+        axs[3].set_ylabel(r"$\|f\|$ [N]")
+        axs[3].set_xlabel('time [s]')
+        axs[3].grid(True)
 
     def plot_task_trajectory(self, logger: np.ndarray):
         fig10, axs10 = plt.subplots(1, 1, sharex=True)

@@ -98,7 +98,8 @@ class P600(simulation.scenario.Dynamics):
         drone_body = self.main_api.get_object('p600')
         init_position = init_state.get_position_in("inertial")
         print("init position: ", init_position)
-        self.main_api.set_object_property_float(drone_body, 'position.x', init_position[0])
+        d_clipping_prevention = 0.1 # small distance to prevent clipping, init clipping may cause problems in contact force
+        self.main_api.set_object_property_float(drone_body, 'position.x', init_position[0]+d_clipping_prevention) 
         self.main_api.set_object_property_float(drone_body, 'position.y', init_position[1])
         self.main_api.set_object_property_float(drone_body, 'position.z', init_position[2])
 
@@ -116,7 +117,10 @@ class P600(simulation.scenario.Dynamics):
             rotors=self.rotors,
             omega_dot=np.zeros(3),
         )
-
+        self.contact_force = simulation.interface.ExtendedWorldPerception(
+            contact_force=np.zeros(3),
+            tip_position=np.zeros(3),
+        )
         self.i = 0
 
         self.main_api.start()
@@ -195,7 +199,10 @@ class P600(simulation.scenario.Dynamics):
         return np.array([reply.get_output_of(getter) for getter in self.flow_sensor_getters])
 
     def get_end_effector_force(self, reply):
-        print(reply.get_output_of(self.end_effector_force_getters))
+        package = reply.get_output_of(self.end_effector_force_getters)
+        force = np.array(package[0:3])
+        # torque = package[3:6]
+        return force
 
     def save_dynamics_state(self, body_state_data, flow_speeds, rotation_speed, rotor_thrusts):
         # body_state_data:
@@ -221,7 +228,6 @@ class P600(simulation.scenario.Dynamics):
             rotor.local_wind_velocity = np.array(flow_speed)
         for rotor_thrust, rotor in zip(rotor_thrusts, self.rotors.rotors):
             rotor.thrust = np.array(rotor_thrust)
-        
 
         self.state = simulation.interface.DynamicsOutput(
             position=np.array(body_state_data[0:3]),
@@ -230,11 +236,19 @@ class P600(simulation.scenario.Dynamics):
             omega=np.array(body_state_data[10:13]),  
             v_dot=np.array(body_state_data[13:16]),  
             rotors=self.rotors,   
-            omega_dot=np.array(body_state_data[16:19])    
+            omega_dot=np.array(body_state_data[16:19]),
         )
+
+    def save_extended_world_perception(self, reply):
+        self.contact_force = simulation.interface.ExtendedWorldPerception(
+            contact_force=self.get_end_effector_force(reply),
+            tip_position=self.state.get_position_in("inertial"))    # temporary solution, should change back to tip
 
     def get_dynamics_output(self) -> simulation.interface.DynamicsOutput:
         return self.state
+
+    def get_extended_world_perception(self) -> simulation.interface.ExtendedWorldPerception:
+        return self.contact_force
 
     def step(self, t, command: simulation.interface.ControllerOutput) -> simulation.interface.DynamicsOutput:
         if False:
@@ -260,8 +274,7 @@ class P600(simulation.scenario.Dynamics):
                                      self.get_wind_speed(reply), 
                                      self.get_motor_speed(reply),
                                      self.get_rotor_thrust(reply))
-            self.get_end_effector_force(reply)
-            
+            self.save_extended_world_perception(reply)            
 
     def shutdown(self):
         self.main_api.clear()

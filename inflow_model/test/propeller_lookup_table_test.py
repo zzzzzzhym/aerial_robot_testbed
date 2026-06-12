@@ -82,7 +82,7 @@ class TestPropellerLookupTableReader(unittest.TestCase):
         forces_in_inertial_frame, _ = instance.get_rotor_forces(u_free, v_forward, r_disk, omega, is_ccw_blade)
         np.testing.assert_array_almost_equal(forces_in_inertial_frame, np.array([0.0, 0.0, 0.0]))
 
-    def test_query_rotation_speed(self):
+    def test_get_rotation_speed(self):
         omega_range = np.array([1000, 2000, 3000, 4000, 5000])
         thrust_profile = np.array([0.1, 0.5, 0.3, 0.6, 0.9])  # non-monotonic
 
@@ -95,26 +95,33 @@ class TestPropellerLookupTableReader(unittest.TestCase):
         reader.table[0, 0, :, 2] = thrust_profile
         reader.get_interpolator()
 
+        # zero wind + horizontal disk → u_norm=0, pitch=0, same as querying at (0.0, 0.0, omega)
+        u_free = np.zeros(3)
+        v_forward = np.zeros(3)
+        r_disk = np.eye(3)
+
         # Case 1: within range, close to 2000 rpm
-        omega = reader.query_rotation_speed(u_free_x=0.0, pitch=0.0, omega_current=2000, thrust_desired=0.49)
+        omega = reader.get_rotation_speed(u_free, v_forward, r_disk, omega_current=2000, thrust_desired=0.49)
         self.assertAlmostEqual(omega, 1975.0, places=1)
 
         # Case 2: clipped below min thrust
-        omega = reader.query_rotation_speed(u_free_x=0.0, pitch=0.0, omega_current=3000, thrust_desired=-1.0)
+        omega = reader.get_rotation_speed(u_free, v_forward, r_disk, omega_current=3000, thrust_desired=-1.0)
         self.assertEqual(omega, 1000)
 
         # Case 3: clipped above max thrust
-        omega = reader.query_rotation_speed(u_free_x=0.0, pitch=0.0, omega_current=1000, thrust_desired=5.0)
+        omega = reader.get_rotation_speed(u_free, v_forward, r_disk, omega_current=1000, thrust_desired=5.0)
         self.assertEqual(omega, 5000)
 
         # Case 4: on flat segment (simulate thrust_left[i] ~= thrust_right[i+1])
         reader.table[0, 0, :, 2] = np.array([0.1, 0.5, 0.5, 0.6, 0.9])  # flat between 2000–3000
-        omega = reader.query_rotation_speed(u_free_x=0.0, pitch=0.0, omega_current=2400, thrust_desired=0.5)
+        reader.get_interpolator()
+        omega = reader.get_rotation_speed(u_free, v_forward, r_disk, omega_current=2400, thrust_desired=0.5)
         self.assertEqual(omega, 2400)
 
         # Case 5: no valid brackets found
         reader.table[0, 0, :, 2] = np.array([0.1, 0.1, 0.1, 0.1, 0.1])  # constant thrust
-        omega = reader.query_rotation_speed(u_free_x=0.0, pitch=0.0, omega_current=2500, thrust_desired=0.3)
+        reader.get_interpolator()
+        omega = reader.get_rotation_speed(u_free, v_forward, r_disk, omega_current=2500, thrust_desired=0.3)
         self.assertEqual(omega, 2500)
 
 
