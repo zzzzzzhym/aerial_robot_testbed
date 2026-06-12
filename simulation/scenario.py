@@ -19,6 +19,16 @@ class Dynamics(ABC):
     def shutdown(self):
         pass
 
+    @abstractmethod
+    def get_dynamics_output(self):
+        pass
+
+    @abstractmethod
+    def get_extended_world_perception(self):
+        pass
+
+
+
 class Controller(ABC):
     @abstractmethod
     def step(self, sensor_data: interface.SensorData, ref: interface.TrajectoryReference):

@@ -46,6 +46,7 @@ class Engine:
             self.t += self.dt_controller
         self.log_sensor_data(logger, sensor_data)
         self.log_dynamics_output(logger, self.scenario.dynamics.get_dynamics_output())
+        self.log_extended_world_perception(logger, self.scenario.dynamics.get_extended_world_perception())
         self.log_control_output(logger, self.scenario.controller.get_control_output())
 
     def run_simulation(self, logger: sim_logger.Logger, t_end):
@@ -57,6 +58,10 @@ class Engine:
 
     def shutdown(self):
         self.scenario.dynamics.shutdown()
+
+    def log_extended_world_perception(self, logger: sim_logger.Logger, perception: interface.ExtendedWorldPerception):
+        logger.buffer["f_contact_normal"].append(logger.buffer["pose"][-1] @ perception.contact_force.copy())
+        logger.buffer["tip_position"].append(perception.tip_position.copy())
 
     def log_sensor_data(self, logger: sim_logger.Logger, sensor_data: interface.SensorData):
         logger.buffer["sensed_dv"].append(sensor_data.v_dot.copy())

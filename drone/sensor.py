@@ -22,3 +22,9 @@ class Sensor(simulation.scenario.Sensor):
             rotors=state.rotors,
             omega_dot=state.omega_dot
         )
+
+
+class LoadCell(simulation.scenario.Sensor):
+    """Not in use yet"""
+    def get_sensor_data(self, state: simulation.interface.DynamicsOutput, t: float):
+        return super().get_sensor_data(state, t)
