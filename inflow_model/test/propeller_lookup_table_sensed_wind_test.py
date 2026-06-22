@@ -135,7 +135,7 @@ class TestQuerySensedWind(unittest.TestCase):
                     result = self.reader.query_data_from_table_sensed_wind(u_disk_plane, u_normal, omega)
                     expected = self.table[i, j, k, :]
                     np.testing.assert_array_almost_equal(
-                        result, expected, decimal=4,
+                        result, expected, decimal=2,
                         err_msg=f"Mismatch at grid point i={i}, j={j}, k={k}"
                     )
 
@@ -153,7 +153,7 @@ class TestDiskFrameDecomposition(unittest.TestCase):
         v_forward = np.array([0.0, 0.0, 0.0])
         omega = 0.0
         forces, v_i = self.reader.get_rotor_forces_sensed_wind(u_sensed, v_forward, r_disk, omega, True)
-        np.testing.assert_array_almost_equal(forces, [0, 0, 0], decimal=5)
+        np.testing.assert_array_almost_equal(forces, [0, 0, 0], decimal=3)
 
     def test_horizontal_disk_in_plane_wind_only_affects_plane_component(self):
         """For horizontal disk, wind in x-y plane → disk-plane = |wind|, disk-normal from v_i only."""

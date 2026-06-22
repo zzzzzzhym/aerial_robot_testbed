@@ -2,7 +2,7 @@ import numpy as np
 import os
 import yaml
 from typing import Optional
-from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator
+from scipy.interpolate import RegularGridInterpolator, LinearNDInterpolator, NearestNDInterpolator
 import matplotlib.pyplot as plt
 
 import bet
@@ -21,6 +21,8 @@ class PropellerLookupTable:
             self.u_sensed_disk_plane_table = None  # shape (n_wind_speeds, n_pitches, n_omegas): |sensed wind in disk plane|
             self.u_sensed_normal_table = None      # shape (n_wind_speeds, n_pitches, n_omegas): sensed wind along disk normal
             self._sensed_wind_interpolator = None  # built lazily on first sensed-wind query
+            self._u_sensed_disk_plane_bounds = None  # set when interpolator is built
+            self._u_sensed_normal_bounds = None       # set when interpolator is built
             self.interpolator = None
             self.load_lookup_table(filename)
 
@@ -42,24 +44,63 @@ class PropellerLookupTable:
             self.interpolator = RegularGridInterpolator((self.u_free_x_range, self.pitch_range, self.omega_range), self.table)
 
         def _build_sensed_wind_interpolator(self):
-            """Build a LinearNDInterpolator over scattered (u_disk_plane, u_normal, omega) points.
+            """Project scattered (u_disk_plane, u_normal) data onto a regular grid per omega
+            slice, then build a RegularGridInterpolator for fast online queries.
 
-            Uses rescale=True so that each axis is normalized to [0,1] before triangulation,
-            which avoids numerical issues when axis ranges differ by orders of magnitude.
+            A separate 2D LinearNDInterpolator is built for each omega level so that the
+            Delaunay triangulation never mixes points from different omega slices.
+            NaN cells (outside each slice's convex hull) are filled with the nearest valid
+            value in that slice so the RegularGridInterpolator is NaN-free inside the
+            original data range.
             """
             n_wind_speeds, n_pitches, n_omegas = self.u_sensed_disk_plane_table.shape
-            n_pts = n_wind_speeds * n_pitches * n_omegas
 
-            # Flatten tables to 1-D and stack with omega
             disk_plane_flat = self.u_sensed_disk_plane_table.reshape(-1)
             normal_flat = self.u_sensed_normal_table.reshape(-1)
-            omega_tiled = np.tile(self.omega_range, n_wind_speeds * n_pitches)  # (n_pts,)
-            values_flat = self.table.reshape(n_pts, 4)
 
-            points = np.column_stack([disk_plane_flat, normal_flat, omega_tiled])
-            self._sensed_wind_interpolator = LinearNDInterpolator(
-                points, values_flat, fill_value=np.nan, rescale=True
+            _N_GRID = 100
+            u_disk_plane_axis = np.linspace(disk_plane_flat.min(), disk_plane_flat.max(), _N_GRID)
+            u_normal_axis = np.linspace(normal_flat.min(), normal_flat.max(), _N_GRID)
+
+            # All (u_disk_plane, u_normal) pairs on the regular 2D grid, shape (N*N, 2).
+            # Used to evaluate each per-omega LinearNDInterpolator on the regular grid nodes.
+            u_disk_plane_grid, u_normal_grid = np.meshgrid(u_disk_plane_axis, u_normal_axis, indexing='ij')
+            regular_grid_query_pts = np.column_stack([u_disk_plane_grid.reshape(-1), u_normal_grid.reshape(-1)])
+
+            grid_values = np.zeros((_N_GRID, _N_GRID, n_omegas, 4))
+
+            for k in range(n_omegas):
+                scattered_disk_plane_k = self.u_sensed_disk_plane_table[:, :, k].reshape(-1)
+                scattered_normal_k = self.u_sensed_normal_table[:, :, k].reshape(-1)
+                scattered_forces_k = self.table[:, :, k, :].reshape(-1, 4)
+                scattered_pts_k = np.column_stack([scattered_disk_plane_k, scattered_normal_k])
+
+                linear_nd_k = LinearNDInterpolator(
+                    scattered_pts_k, scattered_forces_k,
+                    fill_value=np.nan, rescale=True,
+                )
+                grid_vals_k = linear_nd_k(regular_grid_query_pts).reshape(_N_GRID, _N_GRID, 4)
+
+                # Fill NaN cells (outside this slice's convex hull) with nearest-neighbor
+                nan_mask_k = np.isnan(grid_vals_k[:, :, 0]).reshape(-1)
+                if nan_mask_k.any():
+                    nn_k = NearestNDInterpolator(scattered_pts_k, scattered_forces_k)
+                    filled = nn_k(regular_grid_query_pts[nan_mask_k])
+                    flat_k = grid_vals_k.reshape(-1, 4)
+                    flat_k[nan_mask_k] = filled
+                    grid_vals_k = flat_k.reshape(_N_GRID, _N_GRID, 4)
+
+                grid_values[:, :, k, :] = grid_vals_k
+
+            self._sensed_wind_interpolator = RegularGridInterpolator(
+                (u_disk_plane_axis, u_normal_axis, self.omega_range),
+                grid_values,
+                method='linear',
+                bounds_error=False,
+                fill_value=np.nan,
             )
+            self._u_sensed_disk_plane_bounds = (float(u_disk_plane_axis[0]), float(u_disk_plane_axis[-1]))
+            self._u_sensed_normal_bounds = (float(u_normal_axis[0]), float(u_normal_axis[-1]))
 
         def query_data_from_table(self, u_free_x: float, pitch: float, omega: float):
             """Query forces using the true free-stream speed as the first axis."""
