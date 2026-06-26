@@ -62,27 +62,30 @@ class PropellerLookupTable:
             u_disk_plane_axis = np.linspace(disk_plane_flat.min(), disk_plane_flat.max(), _N_GRID)
             u_normal_axis = np.linspace(normal_flat.min(), normal_flat.max(), _N_GRID)
 
-            dp_2d, un_2d = np.meshgrid(u_disk_plane_axis, u_normal_axis, indexing='ij')
-            query_pts_2d = np.column_stack([dp_2d.reshape(-1), un_2d.reshape(-1)])
+            # All (u_disk_plane, u_normal) pairs on the regular 2D grid, shape (N*N, 2).
+            # Used to evaluate each per-omega LinearNDInterpolator on the regular grid nodes.
+            u_disk_plane_grid, u_normal_grid = np.meshgrid(u_disk_plane_axis, u_normal_axis, indexing='ij')
+            regular_grid_query_pts = np.column_stack([u_disk_plane_grid.reshape(-1), u_normal_grid.reshape(-1)])
 
             grid_values = np.zeros((_N_GRID, _N_GRID, n_omegas, 4))
 
             for k in range(n_omegas):
-                dp_k = self.u_sensed_disk_plane_table[:, :, k].reshape(-1)
-                un_k = self.u_sensed_normal_table[:, :, k].reshape(-1)
-                vals_k = self.table[:, :, k, :].reshape(-1, 4)
+                scattered_disk_plane_k = self.u_sensed_disk_plane_table[:, :, k].reshape(-1)
+                scattered_normal_k = self.u_sensed_normal_table[:, :, k].reshape(-1)
+                scattered_forces_k = self.table[:, :, k, :].reshape(-1, 4)
+                scattered_pts_k = np.column_stack([scattered_disk_plane_k, scattered_normal_k])
 
                 linear_nd_k = LinearNDInterpolator(
-                    np.column_stack([dp_k, un_k]), vals_k,
+                    scattered_pts_k, scattered_forces_k,
                     fill_value=np.nan, rescale=True,
                 )
-                grid_vals_k = linear_nd_k(query_pts_2d).reshape(_N_GRID, _N_GRID, 4)
+                grid_vals_k = linear_nd_k(regular_grid_query_pts).reshape(_N_GRID, _N_GRID, 4)
 
                 # Fill NaN cells (outside this slice's convex hull) with nearest-neighbor
                 nan_mask_k = np.isnan(grid_vals_k[:, :, 0]).reshape(-1)
                 if nan_mask_k.any():
-                    nn_k = NearestNDInterpolator(np.column_stack([dp_k, un_k]), vals_k)
-                    filled = nn_k(query_pts_2d[nan_mask_k])
+                    nn_k = NearestNDInterpolator(scattered_pts_k, scattered_forces_k)
+                    filled = nn_k(regular_grid_query_pts[nan_mask_k])
                     flat_k = grid_vals_k.reshape(-1, 4)
                     flat_k[nan_mask_k] = filled
                     grid_vals_k = flat_k.reshape(_N_GRID, _N_GRID, 4)
