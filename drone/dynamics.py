@@ -182,5 +182,8 @@ class DroneDynamics(simulation.scenario.Dynamics):
         )
         return output
 
+    def get_extended_world_perception(self):
+        return simulation.interface.ExtendedWorldPerception(np.zeros(3), np.zeros(3))  # supposed to be contact force
+
     def shutdown(self):
         pass

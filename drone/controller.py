@@ -371,8 +371,8 @@ class DroneController(simulation.scenario.Controller):
         if self.is_using_inflow_model:
             # with inflow model
             for i, thrust in enumerate(self.force_motor_desired):
-                self.rotation_speed[i] = self.propeller_force_table.get_rotation_speed(
-                    sensor_data.rotors.rotors[i].local_wind_velocity,
+                self.rotation_speed[i] = self.propeller_force_table.get_rotation_speed_sensed_wind(
+                    sensor_data.rotors.rotors[i].sensed_wind_velocity,
                     sensor_data.rotors.rotors[i].velocity_inertial_frame,
                     sensor_data.rotors.rotors[i].pose,
                     sensor_data.rotors.rotors[i].rotation_speed,

@@ -205,6 +205,7 @@ class WindEffectNearWall(DisturbanceForce):
             torques.append(np.cross(rotor.relative_position_inertial_frame, force))
             induced_flows.append(v_i)
             rotor.local_wind_velocity = wind_velocity  # update the local wind velocity in rotor frame
+            rotor.sensed_wind_velocity = wind_velocity + v_i - rotor.velocity_inertial_frame
             rotor.thrust = (rotor.pose.T@force)[2]  # update the force in rotor frame
             rotor.f_rotor_inertial_frame = force  # update the force in inertial frame
         self.f_propeller = sum(forces)
