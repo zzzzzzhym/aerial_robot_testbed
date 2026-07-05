@@ -226,6 +226,7 @@ class P600(simulation.scenario.Dynamics):
         self.rotors.step_all_rotor_states(body_state, rotation_speed)
         for flow_speed, rotor in zip(flow_speeds, self.rotors.rotors):
             rotor.local_wind_velocity = np.array(flow_speed)
+            rotor.sensed_wind_velocity = np.array(flow_speed)
         for rotor_thrust, rotor in zip(rotor_thrusts, self.rotors.rotors):
             rotor.thrust = np.array(rotor_thrust)
 

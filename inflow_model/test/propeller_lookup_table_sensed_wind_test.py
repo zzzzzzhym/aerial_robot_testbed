@@ -373,5 +373,80 @@ class TestNoWindSensedWindConsistency(unittest.TestCase):
 
 
 
+class TestGetBackgroundWind(unittest.TestCase):
+    """Tests for Reader.get_background_wind(u_sensed, r_disk, omega)."""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.table, _, _, self.u_range, self.p_range, self.o_range = _make_tiny_table(self.tmp_dir)
+        self.reader = _TmpTableReader("test_tiny", self.tmp_dir)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp_dir)
+
+    def test_returns_3d_array(self):
+        r_disk = np.eye(3)
+        u_sensed = np.array([0.0, 0.0, -1.0])
+        result = self.reader.get_background_wind(u_sensed, r_disk, self.o_range[1])
+        self.assertEqual(result.shape, (3,))
+
+    def test_recovers_zero_background_wind(self):
+        """At u_free=0, pitch=0 (horizontal disk), u_sensed = [0, 0, -v_i].
+        The recovered u_background should be [0, 0, 0].
+        """
+        r_disk = np.eye(3)
+        u_idx, pitch_idx = 0, 0  # u_free=0, pitch=0
+        for k, omega in enumerate(self.o_range):
+            v_i = float(self.table[u_idx, pitch_idx, k, 3])
+            u_sensed = np.array([0.0, 0.0, -v_i])
+            u_background = self.reader.get_background_wind(u_sensed, r_disk, omega)
+            np.testing.assert_array_almost_equal(
+                u_background, [0.0, 0.0, 0.0], decimal=3,
+                err_msg=f"Background wind not zero at omega={omega}: got {u_background}")
+
+    def test_recovers_free_stream_at_grid_point(self):
+        """At a grid point (u_free=5, pitch=0), u_sensed = [5, 0, -v_i].
+        get_background_wind should return [5, 0, 0] (= the original free-stream).
+        """
+        r_disk = np.eye(3)
+        u_idx = 1   # u_free=5.0
+        pitch_idx = 0  # pitch=0
+        for k, omega in enumerate(self.o_range):
+            u_free = self.u_range[u_idx]  # = 5.0
+            v_i = float(self.table[u_idx, pitch_idx, k, 3])
+            u_sensed = np.array([u_free, 0.0, -v_i])
+            u_background = self.reader.get_background_wind(u_sensed, r_disk, omega)
+            np.testing.assert_array_almost_equal(
+                u_background, [u_free, 0.0, 0.0], decimal=2,
+                err_msg=f"Background wind mismatch at u_free={u_free}, omega={omega}: got {u_background}")
+
+    def test_no_inplane_component_unchanged(self):
+        """The disk-plane component of u_background should match u_sensed's plane component
+        since v_i only affects the disk-normal direction.
+        """
+        r_disk = np.eye(3)
+        u_sensed = np.array([3.0, 2.0, -1.0])
+        omega = self.o_range[0]
+        u_background = self.reader.get_background_wind(u_sensed, r_disk, omega)
+        # x and y (in-plane) should be unchanged
+        np.testing.assert_almost_equal(u_background[0], u_sensed[0], decimal=3)
+        np.testing.assert_almost_equal(u_background[1], u_sensed[1], decimal=3)
+
+    def test_with_real_table(self):
+        """Smoke test on the real p600 table: result should be finite and 3D."""
+        reader = PropellerLookupTable.Reader("p600")
+        r_disk = np.eye(3)
+        u_idx = np.argmin(np.abs(reader.u_free_x_range - 0.0))
+        pitch_idx = np.argmin(np.abs(reader.pitch_range - 0.0))
+        omega_idx = np.argmin(np.abs(reader.omega_range - 500.0))
+        omega = float(reader.omega_range[omega_idx])
+        v_i = float(reader.table[u_idx, pitch_idx, omega_idx, 3])
+        u_sensed = np.array([0.0, 0.0, -v_i])
+        u_background = reader.get_background_wind(u_sensed, r_disk, omega)
+        self.assertEqual(u_background.shape, (3,))
+        self.assertTrue(np.all(np.isfinite(u_background)))
+        np.testing.assert_array_almost_equal(u_background, [0.0, 0.0, 0.0], decimal=2)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

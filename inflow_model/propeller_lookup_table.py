@@ -20,7 +20,7 @@ class PropellerLookupTable:
             self.max_allowed_extrapolation = 1e-3
             self.u_sensed_disk_plane_table = None  # shape (n_wind_speeds, n_pitches, n_omegas): |sensed wind in disk plane|
             self.u_sensed_normal_table = None      # shape (n_wind_speeds, n_pitches, n_omegas): sensed wind along disk normal
-            self._sensed_wind_interpolator = None  # built lazily on first sensed-wind query
+            self._sensed_wind_interpolator = None
             self._u_sensed_disk_plane_bounds = None  # set when interpolator is built
             self._u_sensed_normal_bounds = None       # set when interpolator is built
             self.interpolator = None
@@ -124,13 +124,20 @@ class PropellerLookupTable:
                 u_sensed_normal: sensed wind component along disk normal (m/s, positive = along disk z)
                 omega: rotor speed (rad/s)
             """
-            if self._sensed_wind_interpolator is None:
-                self._build_sensed_wind_interpolator()
             omega_clipped = np.clip(omega, self.omega_range[0], self.omega_range[-1])
-            if np.abs(omega - omega_clipped) > self.max_allowed_extrapolation:
-                warnings.warn(f"Warning: omega {omega} outside range, clipped to {omega_clipped}")
+            u_disk_plane_clipped = np.clip(u_sensed_disk_plane, self._u_sensed_disk_plane_bounds[0], self._u_sensed_disk_plane_bounds[1])
+            u_normal_clipped = np.clip(u_sensed_normal, self._u_sensed_normal_bounds[0], self._u_sensed_normal_bounds[1])
+            if np.abs(omega - omega_clipped) > self.max_allowed_extrapolation or \
+               np.abs(u_sensed_disk_plane - u_disk_plane_clipped) > self.max_allowed_extrapolation or \
+               np.abs(u_sensed_normal - u_normal_clipped) > self.max_allowed_extrapolation:
+                warnings.warn(
+                    f"Warning: Sensed-wind query outside range:\n"
+                    f"u_sensed_disk_plane [m/s]: {u_sensed_disk_plane} (range: {self._u_sensed_disk_plane_bounds}),\n"
+                    f"u_sensed_normal [m/s]: {u_sensed_normal} (range: {self._u_sensed_normal_bounds}),\n"
+                    f"omega [rad/s]: {omega} (range: [{self.omega_range[0]}, {self.omega_range[-1]}])"
+                )
             result = self._sensed_wind_interpolator(
-                [[u_sensed_disk_plane, u_sensed_normal, omega_clipped]]
+                [[u_disk_plane_clipped, u_normal_clipped, omega_clipped]]
             )[0]
             if np.any(np.isnan(result)):
                 warnings.warn(
@@ -195,14 +202,14 @@ class PropellerLookupTable:
             u_relative = u_sensed - v_forward
             disk_normal = r_disk[:, 2]  # disk z-axis in inertial frame
 
-            u_normal_magnitude = float(u_relative @ disk_normal)
+            u_normal_magnitude = u_relative @ disk_normal
             u_plane_vec = u_relative - u_normal_magnitude * disk_normal
-            u_plane_magnitude = float(np.linalg.norm(u_plane_vec))
+            u_plane_magnitude = np.linalg.norm(u_plane_vec)
 
             queried_data = self.query_data_from_table_sensed_wind(u_plane_magnitude, u_normal_magnitude, omega)
 
             forces_disk = queried_data[:3].copy()
-            v_i_scalar = float(queried_data[3])
+            v_i_scalar = queried_data[3]
 
             if not is_ccw_blade:
                 forces_disk[1] *= -1
@@ -286,6 +293,35 @@ class PropellerLookupTable:
             u_norm, pitch = self._resolve_frame(u_free, v_forward, r_disk)
             return self._sweep_omega_for_thrust(u_norm, pitch, omega_current, thrust_desired)
 
+        def get_background_wind(self, u_sensed: np.ndarray, r_disk: np.ndarray, omega: float) -> np.ndarray:
+            """Recover background (free-stream) wind from the sensed wind and rotor speed.
+
+            Sensed wind convention: u_sensed = u_background + v_i_vector,
+            where v_i_vector = -v_i * disk_normal (inflow in -z disk direction, v_i > 0).
+            Inversion: u_background = u_sensed + v_i * disk_normal.
+
+            v_i is obtained by querying the sensed-wind interpolator at the current
+            (u_sensed_disk_plane, u_sensed_normal, omega) operating point.
+
+            Note: r_disk is required to decompose u_sensed into disk-frame components and
+            to reconstruct the 3D background wind vector.
+
+            Args:
+                u_sensed: sensed wind velocity in inertial frame (m/s, 3D)
+                r_disk: rotor disk pose in inertial frame (columns = disk axes in inertial)
+                omega: rotation speed of the rotor (rad/s)
+
+            Returns:
+                np.ndarray: background wind velocity in inertial frame (m/s, 3D)
+            """
+            disk_normal = r_disk[:, 2]
+            u_sensed_normal = u_sensed @ disk_normal
+            u_sensed_plane_vec = u_sensed - u_sensed_normal * disk_normal
+            u_sensed_plane = np.linalg.norm(u_sensed_plane_vec)
+
+            data = self.query_data_from_table_sensed_wind(u_sensed_plane, u_sensed_normal, omega)
+            return u_sensed + data[3] * disk_normal
+
         def get_rotation_speed_sensed_wind(self, u_sensed: np.ndarray, v_forward: np.ndarray, r_disk: np.ndarray, omega_current: float, thrust_desired: float) -> float:
             """Get the rotation speed needed for a desired thrust using the sensed wind vector.
 
@@ -305,18 +341,16 @@ class PropellerLookupTable:
             Returns:
                 float: rotation speed of the rotor in rad/s
             """
-            u_relative = u_sensed - v_forward
             disk_normal = r_disk[:, 2]
-            u_sensed_normal = float(u_relative @ disk_normal)
-            u_sensed_plane_vec = u_relative - u_sensed_normal * disk_normal
-            u_sensed_plane = float(np.linalg.norm(u_sensed_plane_vec))
+            u_sensed_normal = u_sensed @ disk_normal
+            u_sensed_plane_vec = u_sensed - u_sensed_normal * disk_normal
+            u_sensed_plane = np.linalg.norm(u_sensed_plane_vec)
 
             # Query sensed-wind table at the current operating point to recover v_i.
             current_data = self.query_data_from_table_sensed_wind(u_sensed_plane, u_sensed_normal, omega_current)
-            v_i = float(current_data[3])
-            if np.isnan(v_i):
-                warnings.warn("get_rotation_speed_sensed_wind: v_i is NaN at current operating point; assuming v_i=0.")
-                v_i = 0.0
+            v_i = current_data[3]
+            v_i_vector = -v_i * disk_normal
+            u_background = u_sensed + v_forward - v_i_vector
 
             # Recover background wind components.
             # u_sensed_normal = u_eq_normal - v_i  =>  u_eq_normal = u_sensed_normal + v_i
@@ -324,15 +358,19 @@ class PropellerLookupTable:
             u_eq_plane = u_sensed_plane
             u_eq_normal = u_sensed_normal + v_i
 
+            print("recovered v_i: ", r_disk@np.array([0,0,-v_i]))
+            print("recovered background wind: ", u_background)
+
             # Convert to (u_free_x, pitch) for the background-wind table sweep.
-            u_free_x = float(np.sqrt(u_eq_plane ** 2 + u_eq_normal ** 2))
-            pitch = float(np.arctan2(u_eq_normal, u_eq_plane))
+            u_free_x = np.sqrt(u_eq_plane ** 2 + u_eq_normal ** 2)
+            pitch = np.arctan2(u_eq_normal, u_eq_plane)
 
             return self._sweep_omega_for_thrust(u_free_x, pitch, omega_current, thrust_desired)
 
         def load_lookup_table(self, filename: str):
             self.read_data(filename)
             self.get_interpolator()
+            self._build_sensed_wind_interpolator()
 
         @staticmethod
         def get_rotation_matrix_between_inertial_and_lookup_table_frame(x_axis_by_wind: np.ndarray, r_disk: np.ndarray):
