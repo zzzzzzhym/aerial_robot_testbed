@@ -47,6 +47,7 @@ class Factory:
         #     disturbance_model,
         #     init_state,
         #     dt_dynamics)
+
         import external_sim.main_process
         assembly = external_sim.main_process.P600(
             drone_params,
@@ -54,6 +55,14 @@ class Factory:
             disturbance_model,
             init_state,
             dt_dynamics)
+
+        # import external_sim.wind_field_collector
+        # assembly = external_sim.wind_field_collector.WindFieldCollector(
+        #     drone_params,
+        #     propeller_params,
+        #     disturbance_model,
+        #     init_state,
+        #     dt_dynamics)
         return assembly
     
     @staticmethod
