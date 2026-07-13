@@ -368,18 +368,27 @@ class DroneController(simulation.scenario.Controller):
     def step_motor_output(self, sensor_data: simulation.interface.SensorData):
         self.force_motor_desired = self.params.m_wrench_to_thrust@np.hstack((self.f[2], self.torque))
 
-        if self.is_using_inflow_model:
-            # with inflow model
+        if self.is_using_inflow_model:  # with inflow model
+            # # use sensed wind speed
+            # for i, thrust in enumerate(self.force_motor_desired):
+            #     self.rotation_speed[i] = self.propeller_force_table.get_rotation_speed_sensed_wind(
+            #         sensor_data.rotors.rotors[i].sensed_wind_velocity,
+            #         sensor_data.rotors.rotors[i].velocity_inertial_frame,
+            #         sensor_data.rotors.rotors[i].pose,
+            #         sensor_data.rotors.rotors[i].rotation_speed,
+            #         thrust
+            #     )
+            
+            # use background wind speed
             for i, thrust in enumerate(self.force_motor_desired):
-                self.rotation_speed[i] = self.propeller_force_table.get_rotation_speed_sensed_wind(
-                    sensor_data.rotors.rotors[i].sensed_wind_velocity,
+                self.rotation_speed[i] = self.propeller_force_table.get_rotation_speed(
+                    sensor_data.rotors.rotors[i].local_wind_velocity,
                     sensor_data.rotors.rotors[i].velocity_inertial_frame,
                     sensor_data.rotors.rotors[i].pose,
                     sensor_data.rotors.rotors[i].rotation_speed,
                     thrust
                 )
-        else:
-            # without inflow model
+        else:   # without inflow model
             for i, thrust in enumerate(self.force_motor_desired):
                 self.rotation_speed[i] = self.propeller_force_table.get_rotation_speed(
                     np.zeros(3),

@@ -1,5 +1,6 @@
 import arcpy as ar  # external simulation API
 import numpy as np
+from pathlib import Path
 
 import simulation.interface
 import simulation.scenario
@@ -9,6 +10,7 @@ import drone.parameters
 import drone.dynamics_state
 import drone.disturbance_model
 import drone.rotor
+import external_sim.cfd_wind_field_lookup.vtk_reader
 
 
 class SimpleMotorModel:
@@ -51,6 +53,32 @@ class P600(simulation.scenario.Dynamics):
         self.dt = dt
 
         self.main_api = ar.Controller()
+        self.configure_sim_environment(disturbance.u_free, disturbance.wind_field_model.wall_origin[0], init_state.get_position_in("inertial"))
+        self.background_wind_reader = external_sim.cfd_wind_field_lookup.vtk_reader.VtkReader(Path(r"C:\Users\jiexu\Downloads\Aerocae Robotics - Geng 2025\export"))
+        self.background_wind_reader.load_mesh_by_wind_velocity(disturbance.u_free)
+
+        self.rotors = drone.rotor.RotorSet(drone_params, propeller)
+        self.state = simulation.interface.DynamicsOutput(
+            position=np.zeros(3),
+            v=np.zeros(3),
+            pose=np.eye(3),
+            omega=np.zeros(3),
+            v_dot=np.zeros(3),
+            rotors=self.rotors,
+            omega_dot=np.zeros(3),
+        )
+        self.contact_force = simulation.interface.ExtendedWorldPerception(
+            contact_force=np.zeros(3),
+            tip_position=np.zeros(3),
+        )
+        self.i = 0
+
+        self.main_api.start()
+
+    def configure_sim_environment(self, wind_speed, wall_offset, init_position):
+        global_id = 0
+        self.main_api.set_object_property_uint(global_id, 'export.auto_export', 0) 
+
         self.sensor = self.main_api.get_object('p600/core/info')
 
         self.flow_sensor_getters = [
@@ -87,43 +115,24 @@ class P600(simulation.scenario.Dynamics):
 
         self.end_effector_force_getters = self.main_api.get_object('p600/end_effector/force_sensor')
         
-
         block_fluid = self.main_api.get_system_by_name('Blocks Fluid')
-        wind_speed = disturbance.u_free
+        self.main_api.set_object_property_uint(block_fluid, 'export.enabled', 0)
         print("wind_speed: ", wind_speed)
         self.main_api.set_object_property_float(block_fluid, 'fluid.initial_velocity.x', wind_speed[0])
         self.main_api.set_object_property_float(block_fluid, 'fluid.initial_velocity.y', wind_speed[1])
         self.main_api.set_object_property_float(block_fluid, 'fluid.initial_velocity.z', wind_speed[2])
 
         drone_body = self.main_api.get_object('p600')
-        init_position = init_state.get_position_in("inertial")
         print("init position: ", init_position)
         d_clipping_prevention = 0.1 # small distance to prevent clipping, init clipping may cause problems in contact force
         self.main_api.set_object_property_float(drone_body, 'position.x', init_position[0]+d_clipping_prevention) 
         self.main_api.set_object_property_float(drone_body, 'position.y', init_position[1])
         self.main_api.set_object_property_float(drone_body, 'position.z', init_position[2])
 
-        wall = self.main_api.get_object('floor/tracker')
-        self.main_api.set_object_property_float(wall, 'plane_origin.x', disturbance.wind_field_model.wall_origin[0])
-
-
-        self.rotors = drone.rotor.RotorSet(drone_params, propeller)
-        self.state = simulation.interface.DynamicsOutput(
-            position=np.zeros(3),
-            v=np.zeros(3),
-            pose=np.eye(3),
-            omega=np.zeros(3),
-            v_dot=np.zeros(3),
-            rotors=self.rotors,
-            omega_dot=np.zeros(3),
-        )
-        self.contact_force = simulation.interface.ExtendedWorldPerception(
-            contact_force=np.zeros(3),
-            tip_position=np.zeros(3),
-        )
-        self.i = 0
-
-        self.main_api.start()
+        # wall = self.main_api.get_object('floor/tracker')
+        # self.main_api.set_object_property_float(wall, 'plane_origin.x', wall_offset)
+        wall = self.main_api.get_object('floor')
+        self.main_api.set_object_property_float(wall, 'position.x', wall_offset)
 
     def filter_motor_speed(self, speeds: np.ndarray) -> np.ndarray:
         # clip first (physical limits)
@@ -225,7 +234,9 @@ class P600(simulation.scenario.Dynamics):
 
         self.rotors.step_all_rotor_states(body_state, rotation_speed)
         for flow_speed, rotor in zip(flow_speeds, self.rotors.rotors):
-            rotor.local_wind_velocity = np.array(flow_speed)
+            rotor.local_wind_velocity = self.background_wind_reader.get_velocity_at(rotor.position_inertial_frame)
+            print("rotor.local_wind_velocity", rotor.local_wind_velocity) # debug
+            # rotor.local_wind_velocity = np.array(flow_speed)  # somehow only this one works
             rotor.sensed_wind_velocity = np.array(flow_speed)
         for rotor_thrust, rotor in zip(rotor_thrusts, self.rotors.rotors):
             rotor.thrust = np.array(rotor_thrust)

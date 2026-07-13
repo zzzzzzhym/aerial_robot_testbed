@@ -333,6 +333,7 @@ class Spin(TrajectoryReference):
         
 class Hover(TrajectoryReference):
     def step_reference_state(self, t) -> None:
+        self.x_d = self.init_x
         return None
     def set_init_state(self, is_upside_down=False) -> None:
         self.init_x = np.array([0.0, 0.0, 0.0])
