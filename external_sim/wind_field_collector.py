@@ -35,7 +35,8 @@ class WindFieldCollector(simulation.scenario.Dynamics):
         wind_speed = disturbance.u_free
         print("wind_speed: ", wind_speed)
 
-        wind_folder = vtk_reader.get_wind_velocity_folder_name(wind_speed)
+        wall_distance = disturbance.wind_field_model.wall_origin[0]
+        wind_folder = vtk_reader.get_wind_velocity_folder_name(wind_speed, wall_distance)
         global_id = 0  # ID=0 corresponds to 'Global'
         self.main_api.set_object_property_string(global_id, 'export.folder_name', str(Path("export") / wind_folder)) 
         self.main_api.set_object_property_uint(global_id, 'export.auto_export', 1) 

@@ -7,6 +7,7 @@ class VtkReader:
     def __init__(self, base_path):
         self.base_path = base_path
         self.tail_path = Path(r"fluid_blocks") / Path(r"fluid_1.vtk")
+        self._is_outside_mesh_warned = False
 
     def get_validated_mesh(self, mesh):
         """Ensure velocity is available as point data."""
@@ -24,10 +25,11 @@ class VtkReader:
             f"'velocity' not found in mesh. Available: {available}"
         )
          
-    def load_mesh_by_wind_velocity(self, wind_velocity: np.ndarray):
-        wind_velocity_selection = get_wind_velocity_folder_name(wind_velocity)
+    def load_mesh_by_wind_velocity(self, wind_velocity: np.ndarray, wall_distance: float | None = None):
+        wind_velocity_selection = get_wind_velocity_folder_name(wind_velocity, wall_distance)
         vtk_path = get_file_path(self.base_path / Path(wind_velocity_selection),  self.tail_path)
         mesh = pv.read(vtk_path)
+        self.free_stream_velocity = np.asarray(wind_velocity, dtype=float).copy()
         self.mesh = self.fill_empty_point_data(self.get_validated_mesh(mesh), wind_velocity)
 
     def fill_empty_point_data(self, mesh, wind_velocity: np.ndarray):
@@ -73,13 +75,28 @@ class VtkReader:
         # Check if the point was actually inside the mesh domain
         if "vtkValidPointMask" in sampled.point_data:
             valid = bool(sampled.point_data["vtkValidPointMask"][0])
+
             if not valid:
-                warnings.warn(
-                    f"Point {pt} is outside the mesh domain; "
-                    f"returned velocity is zero-padded."
-                )
-        
+                if not self._is_outside_mesh_warned:
+                    warnings.warn(
+                        "Some query points are outside the mesh domain; "
+                        "returning free-stream velocity for out-of-range points.",
+                        stacklevel=2,
+                    )
+                    self._is_outside_mesh_warned = True
+                return self.free_stream_velocity.copy()
+
         return velocity
+
+class FreeStreamReader:
+    """Drop-in replacement for VtkReader when no wall is present.
+    Always returns the free-stream velocity regardless of query point."""
+    def __init__(self, free_stream: np.ndarray):
+        self._v = np.asarray(free_stream, dtype=float).copy()
+
+    def get_velocity_at(self, point: np.ndarray) -> np.ndarray:
+        return self._v.copy()
+
 
 def get_file_path(base_dir: str | Path, known_filename: str) -> Path:
     base = Path(base_dir)
@@ -98,32 +115,44 @@ def get_file_path(base_dir: str | Path, known_filename: str) -> Path:
 
     return file_path
 
-def get_wind_velocity_folder_name(wind_velocity: np.ndarray) -> str:
-    """Generate a folder name from a 3D wind velocity vector."""
+def get_wind_velocity_folder_name(wind_velocity: np.ndarray, wall_distance: float | None = None) -> str:
+    """Generate a folder name from a 3D wind velocity vector and optional wall distance.
+
+    Parameters
+    ----------
+    wind_velocity : np.ndarray
+        Shape (3,) free-stream velocity [x, y, z].
+    wall_distance : float | None
+        Wall x-coordinate (signed, metres) — typically negative when the wall
+        is in the -x direction (e.g. -0.5).  If None the folder name contains
+        only the wind velocity components, preserving backward compatibility
+        with files generated before wall distance was encoded.
+    """
     wind_velocity = np.asarray(wind_velocity)
-    
+
     if wind_velocity.shape != (3,):
         raise ValueError(f"wind_velocity must have shape (3,), got {wind_velocity.shape}")
-    
+
     def make_sign_symbol(value):
         return "n" if value < 0 else "p"
-    
-    components = ["x", "y", "z"]
-    parts = []
-    
-    for value, component in zip(wind_velocity, components):
-        sign = make_sign_symbol(value)
-        mag = abs(value)
-        
-        # Clean up float representation: 1.0 → "1", 0.5 → "0.5"
+
+    def encode_float(mag) -> str:
+        """Clean float string: 1.0 → '1', 0.5 → '0.5'."""
         if isinstance(mag, (float, np.floating)):
             if mag.is_integer():
-                mag_str = str(int(mag))
-            else:
-                mag_str = f"{mag:.6g}"  # avoids 1.0000000000000002 noise
-        else:
-            mag_str = str(mag)
-            
-        parts.append(f"{component}{sign}{mag_str}")
-    
+                return str(int(mag))
+            return f"{mag:.6g}"  # avoids 1.0000000000000002 noise
+        return str(mag)
+
+    components = ["x", "y", "z"]
+    parts = []
+
+    for value, component in zip(wind_velocity, components):
+        sign = make_sign_symbol(value)
+        parts.append(f"{component}{sign}{encode_float(abs(value))}")
+
+    if wall_distance is not None:
+        sign = make_sign_symbol(wall_distance)
+        parts.append(f"d{sign}{encode_float(abs(wall_distance))}")
+
     return "_".join(parts)

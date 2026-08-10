@@ -13,6 +13,9 @@ import drone.rotor
 import external_sim.cfd_wind_field_lookup.vtk_reader
 
 
+_NO_WALL_THRESHOLD = 50  # wall distances beyond this (m) are treated as free field
+
+
 class SimpleMotorModel:
     def __init__(self):
         # parameters from screenshot
@@ -54,8 +57,13 @@ class P600(simulation.scenario.Dynamics):
 
         self.main_api = ar.Controller()
         self.configure_sim_environment(disturbance.u_free, disturbance.wind_field_model.wall_origin[0], init_state.get_position_in("inertial"))
-        self.background_wind_reader = external_sim.cfd_wind_field_lookup.vtk_reader.VtkReader(Path(r"C:\Users\jiexu\Downloads\Aerocae Robotics - Geng 2025\export"))
-        self.background_wind_reader.load_mesh_by_wind_velocity(disturbance.u_free)
+        wall_distance = disturbance.wind_field_model.wall_origin[0]
+        if abs(wall_distance) > _NO_WALL_THRESHOLD:
+            print("Treating as no wall environment, using free stream wind velocity as background wind")
+            self.background_wind_reader = external_sim.cfd_wind_field_lookup.vtk_reader.FreeStreamReader(disturbance.u_free)
+        else:
+            self.background_wind_reader = external_sim.cfd_wind_field_lookup.vtk_reader.VtkReader(Path(r"C:\Users\jiexu\Downloads\Aerocae Robotics - Geng 2025\export"))
+            self.background_wind_reader.load_mesh_by_wind_velocity(disturbance.u_free, wall_distance)
 
         self.rotors = drone.rotor.RotorSet(drone_params, propeller)
         self.state = simulation.interface.DynamicsOutput(
@@ -132,7 +140,10 @@ class P600(simulation.scenario.Dynamics):
         # wall = self.main_api.get_object('floor/tracker')
         # self.main_api.set_object_property_float(wall, 'plane_origin.x', wall_offset)
         wall = self.main_api.get_object('floor')
-        self.main_api.set_object_property_float(wall, 'position.x', wall_offset)
+        if abs(wall_offset) > _NO_WALL_THRESHOLD:
+            self.main_api.set_object_property_uint(wall, 'enabled', 0)
+        else:
+            self.main_api.set_object_property_float(wall, 'position.x', wall_offset)
 
     def filter_motor_speed(self, speeds: np.ndarray) -> np.ndarray:
         # clip first (physical limits)

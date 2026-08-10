@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 from scipy.optimize import minimize
+from scipy.stats import qmc
 import pandas as pd
 
 
@@ -13,6 +14,18 @@ import inflow_model.propeller_lookup_table as propeller_lookup_table
 from drone import utils
 from drone import parameters
 import data_factory
+
+def generate_seeds(bounds, n_lhs=30, physical_seed=None, random_seed=42):
+    """Generate candidate starting points via Latin Hypercube Sampling."""
+    lower = np.array([b[0] for b in bounds], dtype=float)
+    upper = np.array([b[1] for b in bounds], dtype=float)
+    sampler = qmc.LatinHypercube(d=len(bounds), seed=random_seed)
+    z_seeds = sampler.random(n=n_lhs)
+    seeds = qmc.scale(z_seeds, lower, upper)
+    if physical_seed is not None:
+        seeds = np.vstack([physical_seed, seeds])
+    return seeds
+
 
 class FittedBlade(Blade):
     """
@@ -54,6 +67,7 @@ class BemtParamFitter:
         self.horizontal_weight = None
         self.fitted_params = None
         self.can_log_and_display_data = False
+        self.k_body_drag = 0.0  # kg/m, body aero drag coefficient along body-z from downwash
         self.adjust_resolution(False)
 
     def initialize_logger(self):
@@ -96,7 +110,7 @@ class BemtParamFitter:
         else:
             self.sample_distance = 100
             self.horizontal_weight = 100        
-            num_of_elements = 5
+            num_of_elements = 2
             num_of_rotation_segments = 6
         print(
             f"Sample distance: {self.sample_distance}, "
@@ -107,36 +121,37 @@ class BemtParamFitter:
         self.bet_instance.set_integration_resolution(num_of_elements, num_of_rotation_segments)
 
     def compute_total_force_inertial_frame(self, dataset: data_factory.FittingDataset, i: int):
-        f_0 = self.compute_model_thrust(dataset.u_free_0[i], 
-                                dataset.v_forward_0[i], 
-                                dataset.shared_r_disk[i], 
-                                dataset.omega_0[i], 
+        f_0, v_i_0 = self.compute_model_thrust(dataset.u_free_0[i],
+                                dataset.v_forward_0[i],
+                                dataset.shared_r_disk[i],
+                                dataset.omega_0[i],
                                 self.params.is_ccw_blade[0])
         # torque_0 = np.cross(dataset.relative_position_inertial_frame_0[i], f_0)
 
-        f_1 = self.compute_model_thrust(dataset.u_free_1[i], 
-                                dataset.v_forward_1[i], 
-                                dataset.shared_r_disk[i], 
-                                dataset.omega_1[i], 
+        f_1, v_i_1 = self.compute_model_thrust(dataset.u_free_1[i],
+                                dataset.v_forward_1[i],
+                                dataset.shared_r_disk[i],
+                                dataset.omega_1[i],
                                 self.params.is_ccw_blade[1])
         # torque_1 = np.cross(dataset.relative_position_inertial_frame_1[i], f_1)
 
-        f_2 = self.compute_model_thrust(dataset.u_free_2[i], 
-                                dataset.v_forward_2[i], 
-                                dataset.shared_r_disk[i], 
-                                dataset.omega_2[i], 
+        f_2, v_i_2 = self.compute_model_thrust(dataset.u_free_2[i],
+                                dataset.v_forward_2[i],
+                                dataset.shared_r_disk[i],
+                                dataset.omega_2[i],
                                 self.params.is_ccw_blade[2])
         # torque_2 = np.cross(dataset.relative_position_inertial_frame_2[i], f_2)
 
-        f_3 = self.compute_model_thrust(dataset.u_free_3[i], 
-                                dataset.v_forward_3[i], 
-                                dataset.shared_r_disk[i], 
-                                dataset.omega_3[i], 
+        f_3, v_i_3 = self.compute_model_thrust(dataset.u_free_3[i],
+                                dataset.v_forward_3[i],
+                                dataset.shared_r_disk[i],
+                                dataset.omega_3[i],
                                 self.params.is_ccw_blade[3])
         # torque_3 = np.cross(dataset.relative_position_inertial_frame_3[i], f_3)
 
         f = f_0 + f_1 + f_2 + f_3
         f_inertial_frame = dataset.shared_r_disk[i]@f
+        v_i_avg = (v_i_0 + v_i_1 + v_i_2 + v_i_3) / 4
 
         if self.can_log_and_display_data:
             self.logger["sample_index"].append(i)
@@ -146,7 +161,49 @@ class BemtParamFitter:
             self.logger["f_3"].append(f_3)
             self.logger["f_total"].append(f)
             self.logger["f_inertial_frame"].append(f_inertial_frame)
-        return f_inertial_frame
+        return f_inertial_frame, v_i_avg
+
+    def compute_average_v_i(self, dataset: data_factory.FittingDataset, i: int, lookup_table: propeller_lookup_table.PropellerLookupTable.Reader):
+        v_i_0 = BemtParamFitter.compute_v_i_with_lookup_table(
+                    dataset.u_free_0[i],
+                    dataset.v_forward_0[i],
+                    dataset.shared_r_disk[i],
+                    dataset.omega_0[i],
+                    self.params.is_ccw_blade[0],
+                    lookup_table
+                )
+
+        v_i_1 = BemtParamFitter.compute_v_i_with_lookup_table(
+            dataset.u_free_1[i],
+            dataset.v_forward_1[i],
+            dataset.shared_r_disk[i],
+            dataset.omega_1[i],
+            self.params.is_ccw_blade[1],
+            lookup_table
+        )
+
+        v_i_2 = BemtParamFitter.compute_v_i_with_lookup_table(
+            dataset.u_free_2[i],
+            dataset.v_forward_2[i],
+            dataset.shared_r_disk[i],
+            dataset.omega_2[i],
+            self.params.is_ccw_blade[2],
+            lookup_table
+        )
+
+        v_i_3 = BemtParamFitter.compute_v_i_with_lookup_table(
+            dataset.u_free_3[i],
+            dataset.v_forward_3[i],
+            dataset.shared_r_disk[i],
+            dataset.omega_3[i],
+            self.params.is_ccw_blade[3],
+            lookup_table
+        )
+        v_i_inertial_avg = (v_i_0 + v_i_1 + v_i_2 + v_i_3) / 4
+        # lookup_table.get_rotor_forces returns v_i as a 3D inertial vector: v_i_inertial = -v_i_scalar * disk_z
+        # project back to the scalar used by compute_body_drag_force: v_i_scalar = -(r_disk.T @ v_i_inertial)[2]
+        r_disk = dataset.shared_r_disk[i]
+        return -(r_disk.T @ v_i_inertial_avg)[2]
 
     def compute_total_force_inertial_frame_with_lookup_table(self, dataset: data_factory.FittingDataset, i: int, lookup_table: propeller_lookup_table.PropellerLookupTable.Reader):
         f_0 = BemtParamFitter.compute_thrust_with_lookup_table(
@@ -206,12 +263,32 @@ class BemtParamFitter:
 
         return f_inertial_frame
 
-    def compute_residual_force(self, f_inertial_frame, a_groundtruth):
+    def compute_body_drag_force(self, v_i_avg: float, u_free_avg: np.ndarray, r_disk: np.ndarray) -> np.ndarray:
+        """Body aero drag along body-z from downwash hitting the drone frame.
+
+        Physical model: F_drag = k_body_drag * (v_i_avg + u_background_axial)^2 in the body-z direction.
+        The force acts downward (in -disk_z direction), so the propellers must produce extra thrust to
+        compensate. Returns the compensation term to add to f_gt (in inertial frame, along +disk_z).
+
+        Args:
+            v_i_avg: disk-area-weighted average induced velocity, positive = downwash (m/s)
+            u_free_avg: background free-stream wind averaged over 4 rotors, inertial frame (m/s)
+            r_disk: disk-to-inertial rotation matrix (columns = disk axes in inertial frame)
+        """
+        # axial wind component in downwash direction (-disk_z), positive = augments downwash
+        u_background_axial = -(r_disk.T @ u_free_avg)[2]
+        v_total = v_i_avg + u_background_axial
+        disk_z_inertial = r_disk[:, 2]  # disk z-axis in inertial frame (thrust direction)
+        return self.k_body_drag * v_total**2 * disk_z_inertial
+
+    def compute_residual_force(self, f_inertial_frame, a_groundtruth, v_i_avg=0.0, u_free_avg=None, r_disk=None):
         """Compute the residual force between the model thrust and the ground truth thrust.
         Assumes a_groundtruth is in the inertial frame (FLU).
         The residual is in the inertial frame (FLU).
         """
         f_gt_inertial_frame = -self.params.m * parameters.Environment.g*np.array([0.0, 0.0, -1.0]) + self.params.m * a_groundtruth
+        if self.k_body_drag != 0.0 and u_free_avg is not None and r_disk is not None:
+            f_gt_inertial_frame += self.compute_body_drag_force(v_i_avg, u_free_avg, r_disk)
         f_residual = f_inertial_frame - f_gt_inertial_frame
         return f_residual
 
@@ -219,9 +296,14 @@ class BemtParamFitter:
         """The residual is in the inertial frame (FLU)."""
         if is_using_lookup_table:
             f_inertial_frame = self.compute_total_force_inertial_frame_with_lookup_table(dataset, i, lookup_table)
+            v_i_avg = self.compute_average_v_i(dataset, i, lookup_table)
+            u_free_avg = (dataset.u_free_0[i] + dataset.u_free_1[i] + dataset.u_free_2[i] + dataset.u_free_3[i]) / 4
+            r_disk = dataset.shared_r_disk[i]
         else:
-            f_inertial_frame = self.compute_total_force_inertial_frame(dataset, i)
-        f_residual = self.compute_residual_force(f_inertial_frame, dataset.dv[i])
+            f_inertial_frame, v_i_avg = self.compute_total_force_inertial_frame(dataset, i)
+            u_free_avg = (dataset.u_free_0[i] + dataset.u_free_1[i] + dataset.u_free_2[i] + dataset.u_free_3[i]) / 4
+            r_disk = dataset.shared_r_disk[i]
+        f_residual = self.compute_residual_force(f_inertial_frame, dataset.dv[i], v_i_avg, u_free_avg, r_disk)
         if is_in_body_frame:
             f_residual = dataset.shared_r_disk[i].T @ f_residual
         return f_residual
@@ -231,17 +313,23 @@ class BemtParamFitter:
             f_x, f_y, f_z, v_i = self.bet_instance.get_rotor_forces(u_free, v_forward, r_disk, omega, is_ccw_blade)
         else:
             f_x, f_y, f_z, v_i = self.bet_instance.get_rotor_forces(u_free, v_forward, r_disk, -omega, is_ccw_blade) # negative omega for CW rotation, this is an interface mismatch
-        return np.array([f_x, f_y, f_z])
+        return np.array([f_x, f_y, f_z]), v_i
 
     @staticmethod
     def compute_thrust_with_lookup_table(u_free, v_forward, r_disk, omega, is_ccw_blade, lookup_table: propeller_lookup_table.PropellerLookupTable.Reader):
         # The output is in inertial frame
         thrust, _ = lookup_table.get_rotor_forces(u_free, v_forward, r_disk, omega, is_ccw_blade)
         return thrust
+
+    @staticmethod
+    def compute_v_i_with_lookup_table(u_free, v_forward, r_disk, omega, is_ccw_blade, lookup_table: propeller_lookup_table.PropellerLookupTable.Reader):
+        # The output is in inertial frame
+        _, v_i = lookup_table.get_rotor_forces(u_free, v_forward, r_disk, omega, is_ccw_blade)
+        return v_i
     
     def get_loss(self, x, datasets: list[data_factory.FittingDataset], lookup_table=None, is_using_lookup_table=False):
-        
-        self.blade.cl_1, self.blade.cl_2, self.blade.cd, self.blade.alpha_0 = x 
+
+        self.blade.cl_1, self.blade.cl_2, self.blade.cd, self.blade.alpha_0, self.k_body_drag = x[:5]
         self.bet_instance.refresh_blade()
 
         loss = 0.0
@@ -264,65 +352,60 @@ class BemtParamFitter:
         return loss
 
     def fit_params(self, datasets: list[data_factory.FittingDataset], initial_guess=None, is_fine_tune=False):
-        cl_1_range = [3.0, 4.0, 5.0, 6.0]
-        cl_2_range = [1.0, 1.5, 2.0]
-        cd_range = [1.0, 1.5, 2.0]
-        alpha_0_range = [np.radians(15), np.radians(20), np.radians(25)]
+        cl_1_range = (2.0, 50.0)
+        cl_2_range =  (0.0, 50.0)
+        cd_range = (0.0, 5.0)
+        alpha_0_range = (np.radians(10), np.radians(40))
+        k_body_drag_range = (0.0, 10.0)
         if initial_guess is None:
-            # Initial guess for cl_1, cl_2, cd, alpha_0
-            initial_guess = np.array([5.0, 1.5, 1.5, 0.3])*1.5
+            # Initial guess for cl_1, cl_2, cd, alpha_0, k_body_drag
+            initial_guess = np.array([7.5, 2.25, 2.25, 0.45, 0.0])
+        # Bounds for cl_1, cl_2, cd, alpha_0, k_body_drag
+        bounds = [cl_1_range, cl_2_range, cd_range, alpha_0_range, k_body_drag_range]
+        lo = np.array([b[0] for b in bounds])
+        hi = np.array([b[1] for b in bounds])
+
+        def normalize(x):
+            return (np.array(x) - lo) / (hi - lo)
+
+        def denormalize(z):
+            return lo + np.array(z) * (hi - lo)
+
+        z0 = normalize(initial_guess)
         print("Initial guess:", initial_guess)
-        # Define the bounds for each parameter
-        bounds = [(2.0, 50.0), (0.0, 50.0), (0.0, 5.0), (np.radians(10), np.radians(40))]
         if is_fine_tune:
             maxiter = 200
         else:
-            maxiter = 50
-        trace = []
+            maxiter = 100
         step_counter = {"count": 0}  # mutable so it can persist across callback calls
 
-        def record_and_print(xk):
-            trace.append(xk.copy())
+        def loss_normalized(z):
+            return self.get_loss(denormalize(z), datasets)
+
+        def record_and_print(zk):
+            cl_1, cl_2, cd, alpha_0, k_body_drag = denormalize(zk)
             step_counter["count"] += 1
-            if step_counter["count"] % 1 == 0:
-                print(f"Step {step_counter['count']}: x = {xk}")
-
-        # x_fixed = initial_guess.copy()
-
-        # def loss_first2(z, datasets):
-        #     x = x_fixed.copy()
-        #     x[:2] = z          # only first 2 dims are optimized
-        #     return self.get_loss(x, datasets)
-
-        # # Optimize the parameters using a minimization algorithm
-        # result = minimize(
-        #     loss_first2,
-        #     x_fixed[:2],
-        #     args=(datasets,),  # args=(datasets, None, is_fine_tune),
-        #     bounds=bounds[:2],
-        #     callback=record_and_print,
-        #     method='Nelder-Mead',
-        #     options={'disp': True, 
-        #             'maxiter': maxiter,
-        #             'fatol': 1e-1}
-        # )
+            print(
+                f"Step {step_counter['count']:3d}: "
+                f"cl_1={cl_1:.3f}  cl_2={cl_2:.3f}  cd={cd:.3f}  "
+                f"alpha_0={np.degrees(alpha_0):.3f}deg  k_body_drag={k_body_drag:.3f}"
+            )
 
         # Optimize the parameters using a minimization algorithm
         result = minimize(
-            self.get_loss,
-            initial_guess.copy(),
-            args=(datasets,),  # args=(datasets, None, is_fine_tune),
-            bounds=bounds,
+            loss_normalized,
+            z0,
+            bounds=[(0.0, 1.0)] * len(bounds),
             callback=record_and_print,
             method='Nelder-Mead',
-            options={'disp': True, 
+            options={'disp': True,
                     'maxiter': maxiter,
                     'fatol': 1e-1}
         )
 
         if result.success:
-            fitted_params = result.x
-            print("Fitted parameters:", fitted_params)
+            fitted_params = denormalize(result.x)
+            print("Fitted parameters: " + ", ".join(f"{v:.3f}" for v in fitted_params))
             return fitted_params
         else:
             print("Optimization failed:", result.message)
@@ -390,6 +473,107 @@ class BemtParamFitter:
         for ax in axs1.flat:
             ax.legend()
         return fig0, fig1
+
+    def screen_seeds(self, seeds, datasets, n_keep=3):
+        """Evaluate each seed once and return the n_keep lowest-loss ones."""
+        evaluated = []
+        for seed in seeds:
+            loss = self.get_loss(seed, datasets)
+            evaluated.append((loss, seed.copy()))
+        evaluated.sort(key=lambda item: item[0])
+        return evaluated[:n_keep]
+
+    def optimize_from_seeds(self, selected_seeds, datasets, bounds, maxiter=100):
+        """Run Powell optimization from each selected seed (in physical space).
+
+        Each seed is normalized before passing to the optimizer, then denormalized
+        before storing on result.x_physical.
+        """
+        lower = np.array([b[0] for b in bounds])
+        upper = np.array([b[1] for b in bounds])
+        scale = upper - lower
+
+        def to_normalized(x):
+            return (x - lower) / scale
+
+        def to_physical(z):
+            return lower + z * scale
+
+        def normalized_loss(z):
+            return self.get_loss(to_physical(z), datasets)
+
+        normalized_bounds = [(0.0, 1.0)] * len(bounds)
+        results = []
+        for seed_loss, seed in selected_seeds:
+            cl_1, cl_2, cd, alpha_0, k_body_drag = seed
+            print(
+                f"Evaluating: ",
+                f"cl_1={cl_1:.3f}  cl_2={cl_2:.3f}  cd={cd:.3f}  "
+                f"alpha_0={np.degrees(alpha_0):.3f}deg  k_body_drag={k_body_drag:.4f}"
+            )
+            z0 = to_normalized(seed)
+            result = minimize(
+                normalized_loss,
+                z0,
+                method="Nelder-Mead",
+                bounds=normalized_bounds,
+                options={
+                    "maxiter": maxiter,
+                    "ftol": 1e-4,
+                    "xtol": 1e-3,
+                    "disp": True,
+                },
+            )
+            result.x_physical = to_physical(result.x)
+            results.append(result)
+        return results
+
+    def fit_params_multistart(self, datasets: list[data_factory.FittingDataset]):
+        """Three-stage multistart fitting: LHS screening → coarse → fine-tune."""
+        bounds = [
+            (2.0, 50.0),    # cl_1
+            (0.0, 50.0),    # cl_2
+            (0.0, 5.0),     # cd
+            (np.radians(10), np.radians(40)),  # alpha_0
+            (0.0, 10.0),    # k_body_drag
+        ]
+        # physical_seed = np.array([5.3, 1.7, 1.8, np.radians(20.6), 0.01])
+        physical_seed = None    # challenge the solver
+        # Stage 1: inexpensive global screening
+        self.adjust_resolution(is_fine_tune=False)
+        seeds = generate_seeds(bounds, n_lhs=128, physical_seed=physical_seed, random_seed=42)
+        selected = self.screen_seeds(seeds, datasets, n_keep=3)
+        for rank, (loss, seed) in enumerate(selected, start=1):
+            cl_1, cl_2, cd, alpha_0, k = seed
+            print(
+                f"Selected seed {rank}: loss={loss:.4f}  "
+                f"cl_1={cl_1:.3f}  cl_2={cl_2:.3f}  cd={cd:.3f}  "
+                f"alpha_0={np.degrees(alpha_0):.3f}deg  k_body_drag={k:.4f}"
+            )
+
+        # Stage 2: coarse local optimization from the best seeds
+        coarse_results = self.optimize_from_seeds(selected, datasets, bounds, maxiter=20)
+        coarse_results.sort(key=lambda r: r.fun)
+        best_coarse = coarse_results[0]
+        cl_1, cl_2, cd, alpha_0, k = best_coarse.x_physical
+        print(
+            f"Best coarse result: loss={best_coarse.fun:.4f}  "
+            f"cl_1={cl_1:.3f}  cl_2={cl_2:.3f}  cd={cd:.3f}  "
+            f"alpha_0={np.degrees(alpha_0):.3f}deg  k_body_drag={k:.4f}"
+        )
+
+        # Stage 3: further iterate only the best coarse result
+        self.adjust_resolution(is_fine_tune=False)
+        fine_seed = [(best_coarse.fun, best_coarse.x_physical)]
+        fine_results = self.optimize_from_seeds(fine_seed, datasets, bounds, maxiter=80)
+        best_result = fine_results[0]
+        cl_1, cl_2, cd, alpha_0, k = best_result.x_physical
+        print(
+            f"Final result: loss={best_result.fun:.4f}  "
+            f"cl_1={cl_1:.3f}  cl_2={cl_2:.3f}  cd={cd:.3f}  "
+            f"alpha_0={np.degrees(alpha_0):.3f}deg  k_body_drag={k:.4f}"
+        )
+        return best_result.x_physical
 
     def make_residual_force_columns(self, dataset: data_factory.FittingDataset, lookup_table):
         f_residual = []
