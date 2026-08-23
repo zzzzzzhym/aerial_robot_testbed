@@ -164,6 +164,13 @@ class FittingDataset:
 
         self.f_residual = None
 
+        # Optional: sensed wind (background + induced velocity) at each rotor, in inertial frame.
+        # Present in datasets recorded after this field was added to the logger.
+        if "rotor_0_sensed_wind_velocity" in df.columns:
+            self.rotor_0_sensed_wind_velocity = np.array(df["rotor_0_sensed_wind_velocity"].to_list())
+        else:
+            self.rotor_0_sensed_wind_velocity = None
+
     def is_ready_for_second_training(self):
         is_ready = False
         if self.f_residual is None:

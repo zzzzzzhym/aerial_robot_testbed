@@ -207,13 +207,9 @@ class P600(simulation.scenario.Dynamics):
         speeds = np.abs(speeds)
         return speeds
 
-    def get_rotor_thrust(self, reply):
-        thrusts = [reply.get_output_of(getter)[2] for getter in self.rotor_force_getters]
-        print("rotor thrust:", thrusts)
-        if any(t is None for t in thrusts):
-            return np.zeros(len(self.rotor_force_getters))
-
-        return np.array(thrusts)
+    def get_rotor_forces_body_frame(self, reply):
+        forces = [reply.get_output_of(getter)[0:3] for getter in self.rotor_force_getters]
+        return forces
 
     def get_wind_speed(self, reply):
         return np.array([reply.get_output_of(getter) for getter in self.flow_sensor_getters])
@@ -224,7 +220,7 @@ class P600(simulation.scenario.Dynamics):
         # torque = package[3:6]
         return force
 
-    def save_dynamics_state(self, body_state_data, flow_speeds, rotation_speed, rotor_thrusts):
+    def save_dynamics_state(self, body_state_data, flow_speeds, rotation_speed, rotor_forces_body_frame):
         # body_state_data:
         # Dofs: 19
         # Dof 0-2: world pos x,y,z
@@ -249,8 +245,8 @@ class P600(simulation.scenario.Dynamics):
             print("rotor.local_wind_velocity", rotor.local_wind_velocity) # debug
             # rotor.local_wind_velocity = np.array(flow_speed)  # somehow only this one works
             rotor.sensed_wind_velocity = np.array(flow_speed)
-        for rotor_thrust, rotor in zip(rotor_thrusts, self.rotors.rotors):
-            rotor.thrust = np.array(rotor_thrust)
+        for f_body, rotor in zip(rotor_forces_body_frame, self.rotors.rotors):
+            rotor.set_force_from_body_frame(f_body)
 
         self.state = simulation.interface.DynamicsOutput(
             position=np.array(body_state_data[0:3]),
@@ -296,7 +292,7 @@ class P600(simulation.scenario.Dynamics):
             self.save_dynamics_state(reply.get_output_of(self.sensor), 
                                      self.get_wind_speed(reply), 
                                      self.get_motor_speed(reply),
-                                     self.get_rotor_thrust(reply))
+                                     self.get_rotor_forces_body_frame(reply))
             self.save_extended_world_perception(reply)            
 
     def shutdown(self):

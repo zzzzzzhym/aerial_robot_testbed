@@ -55,7 +55,19 @@ class Rotor:
 
     def step_rotation_speed(self, speed):
         self.rotation_speed = speed
-    
+
+    def set_force_from_body_frame(self, f_body: np.ndarray):
+        """Set rotor force from body-frame measurement.
+
+        Converts to inertial frame using the current rotor pose and updates
+        thrust (body-z component) and f_rotor_inertial_frame.
+
+        Args:
+            f_body: 3D force vector in body frame.
+        """
+        self.f_rotor_inertial_frame = self.pose @ f_body
+        self.thrust = float(f_body[2])
+
 class RotorSet:
     """This class manage the collection of all rotors on the drone."""    
     def __init__(self, drone: params.Multicopter, propeller: propeller.Propeller) -> None:

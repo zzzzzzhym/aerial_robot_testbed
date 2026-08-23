@@ -137,6 +137,14 @@ rotor_2_local_wind_velocity:
   can_save_to_file: true
 rotor_3_local_wind_velocity:
   can_save_to_file: true
+rotor_0_sensed_wind_velocity:
+  can_save_to_file: true
+rotor_1_sensed_wind_velocity:
+  can_save_to_file: true
+rotor_2_sensed_wind_velocity:
+  can_save_to_file: true
+rotor_3_sensed_wind_velocity:
+  can_save_to_file: true
 rotor_0_f_rotor_inertial_frame:
   can_save_to_file: true
 rotor_1_f_rotor_inertial_frame:
