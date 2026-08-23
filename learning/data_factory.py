@@ -164,12 +164,6 @@ class FittingDataset:
 
         self.f_residual = None
 
-    def attach_residual_force(self, f_residual):
-        if (len(f_residual) == len(self.omega)):
-            print("f_residual mismatch the length with the other data")
-        else:
-            self.f_residual = f_residual
-
     def is_ready_for_second_training(self):
         is_ready = False
         if self.f_residual is None:
