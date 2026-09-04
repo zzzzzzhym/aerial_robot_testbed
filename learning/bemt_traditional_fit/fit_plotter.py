@@ -83,3 +83,35 @@ class FitPlotter:
             ax.legend()
 
         return fig0, fig1
+
+    @staticmethod
+    def plot_single_rotor_fit(model, dataset: data_factory.FittingDataset, sample_step: int = 1):
+        """Plot BET-predicted vs measured force for rotor 0 in disk frame."""
+        data_len = len(dataset.rotor_0_sensed_wind_velocity)
+        sample_indices = list(range(0, data_len, sample_step))
+
+        predicted = []
+        measured = []
+        for i in sample_indices:
+            r_disk = dataset.shared_r_disk[i]
+            f_pred = model.compute_rotor0_thrust(
+                dataset.rotor_0_sensed_wind_velocity[i],
+                r_disk,
+                dataset.omega_0[i],
+            )
+            f_meas = r_disk.T @ dataset.rotor_0_f_rotor_inertial_frame[i]
+            predicted.append(f_pred)
+            measured.append(f_meas)
+
+        fig, axs = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
+        labels = ["Force X (disk)", "Force Y (disk)", "Force Z (disk)"]
+        for j in range(3):
+            axs[j].plot(sample_indices, [f[j] for f in predicted],
+                        label="Predicted", linestyle="None", marker=".")
+            axs[j].plot(sample_indices, [f[j] for f in measured],
+                        label="Measured", linestyle="-", marker=".")
+            axs[j].set_ylabel(labels[j])
+            axs[j].legend()
+        axs[2].set_xlabel("Sample Index")
+        fig.tight_layout()
+        return fig
