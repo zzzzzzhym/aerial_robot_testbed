@@ -1,13 +1,30 @@
+from pathlib import Path
 import numpy as np
 
 import data_factory
 from learning.bemt_traditional_fit.bemt_model import BemtModel
+from learning.bemt_traditional_fit.fitting_config import FittingConfig
 from learning.bemt_traditional_fit.objective import FittingObjective
 from learning.bemt_traditional_fit.single_rotor_model import SingleRotorBemtModel
 from learning.bemt_traditional_fit.single_rotor_objective import SingleRotorObjective
 from learning.bemt_traditional_fit.fit_plotter import FitPlotter
 from learning.bemt_traditional_fit.fitting_engine import FittingEngine
-from learning.bemt_traditional_fit.seed_generator import SingleSeedGenerator
+from learning.bemt_traditional_fit.seed_generator import MultiSeedGenerator, SingleSeedGenerator
+from learning.bemt_traditional_fit.solver import Solver
+
+_CONFIG_DIR = Path(__file__).parent
+
+
+def _build_engine(model, objective, config: FittingConfig) -> FittingEngine:
+    bounds = model.BOUNDS
+    sc = config.seed
+    sv = config.solver
+    seed_gen = MultiSeedGenerator(n_lhs=sc.n_lhs, n_keep=sc.n_keep, random_seed=sc.random_seed)
+    coarse_solver = Solver(bounds, maxiter=sv.coarse_maxiter, options={'ftol': sv.ftol, 'xtol': sv.xtol, 'disp': True})
+    fine_solver = Solver(bounds, maxiter=sv.fine_maxiter, options={'ftol': sv.ftol, 'xtol': sv.xtol, 'disp': True})
+    single_solver = Solver(bounds, maxiter=sv.single_maxiter, options={'disp': True, 'fatol': 1e-1})
+    single_fine_solver = Solver(bounds, maxiter=sv.single_fine_maxiter, options={'disp': True, 'fatol': 1e-1})
+    return FittingEngine(model, objective, seed_gen, coarse_solver, fine_solver, single_solver, single_fine_solver)
 
 
 class FittingManager:
@@ -18,30 +35,35 @@ class FittingManager:
         FittingManager.for_single_rotor(blade, is_ccw_rotor0, datasets)
     """
 
-    def __init__(self, model, objective, datasets: list[data_factory.FittingDataset],
-                 init_guess=None):
+    def __init__(self, model, engine: FittingEngine,
+                 datasets: list[data_factory.FittingDataset], init_guess=None):
         self.model = model
+        self.engine = engine
         self.datasets = datasets
         self.init_guess = (
             np.asarray(init_guess, dtype=float) if init_guess is not None else None
         )
-        self.engine = FittingEngine(model, objective)
 
     @classmethod
     def for_full_vehicle(cls, blade, params, datasets: list[data_factory.FittingDataset],
-                         init_guess=None):
+                         init_guess=None, config: FittingConfig = None):
         """Full four-rotor vehicle fitting. Fits cl_1, cl_2, cd, alpha_0, k_body_drag."""
-        model = BemtModel(blade, params)
+        config = config or FittingConfig.from_yaml(_CONFIG_DIR / "config_full_vehicle.yaml")
+        model = BemtModel(blade, params, model_config=config.model)
         objective = FittingObjective(model)
-        return cls(model, objective, datasets, init_guess)
+        engine = _build_engine(model, objective, config)
+        return cls(model, engine, datasets, init_guess)
 
     @classmethod
     def for_single_rotor(cls, blade, is_ccw_rotor0: bool,
-                         datasets: list[data_factory.FittingDataset], init_guess=None):
+                         datasets: list[data_factory.FittingDataset], init_guess=None,
+                         config: FittingConfig = None):
         """Single-rotor test-stand fitting. Fits cl_1, cl_2, cd, alpha_0."""
-        model = SingleRotorBemtModel(blade, is_ccw_rotor0)
+        config = config or FittingConfig.from_yaml(_CONFIG_DIR / "config_single_rotor.yaml")
+        model = SingleRotorBemtModel(blade, is_ccw_rotor0, model_config=config.model)
         objective = SingleRotorObjective(model)
-        return cls(model, objective, datasets, init_guess)
+        engine = _build_engine(model, objective, config)
+        return cls(model, engine, datasets, init_guess)
 
     def run(self, is_multiseed: bool = True, is_fine_tune: bool = False):
         """Run fitting.

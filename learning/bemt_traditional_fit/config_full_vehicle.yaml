@@ -1,0 +1,23 @@
+# Full four-rotor vehicle fitting config
+# Fits: cl_1, cl_2, cd, alpha_0, k_body_drag
+
+model:
+  coarse_n_elements: 2            # number of blade elements along the span, coarse pass
+  fine_n_elements: 20             # number of blade elements along the span, fine pass
+  coarse_n_rotation_segments: 6   # number of azimuthal segments, coarse pass
+  fine_n_rotation_segments: 18    # number of azimuthal segments, fine pass
+  coarse_sample_distance: 100     # row stride for dataset subsampling, coarse pass
+  fine_sample_distance: 20        # row stride for dataset subsampling, fine pass
+
+seed:
+  n_lhs: 128      # number of Latin Hypercube samples for global screening
+  n_keep: 3       # number of best seeds carried forward to coarse optimization
+  random_seed: 42 # random seed for reproducible LHS sampling
+
+solver:
+  coarse_maxiter: 20      # max iterations, coarse stage
+  fine_maxiter: 80        # max iterations, fine stage
+  single_maxiter: 100     # max iterations, single-seed run
+  single_fine_maxiter: 200 # max iterations, single-seed fine-tune run
+  ftol: 1.0e-4            # function value tolerance for convergence
+  xtol: 1.0e-3            # parameter value tolerance for convergence

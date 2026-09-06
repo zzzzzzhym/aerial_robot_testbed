@@ -2,6 +2,7 @@ import numpy as np
 
 from inflow_model.bet import BladeElementTheory
 import data_factory
+from learning.bemt_traditional_fit.fitting_config import ModelConfig
 
 
 class SingleRotorBemtModel:
@@ -25,22 +26,23 @@ class SingleRotorBemtModel:
         (np.radians(10), np.radians(40)),     # alpha_0
     ]
 
-    def __init__(self, blade, is_ccw_rotor0: bool):
+    def __init__(self, blade, is_ccw_rotor0: bool, model_config: ModelConfig):
         self.blade = blade
         self.is_ccw_rotor0 = is_ccw_rotor0
         self.bet_instance = BladeElementTheory(self.blade)
+        self.model_config = model_config
         self.sample_distance = None
         self.adjust_resolution(is_fine_tune=False)
 
     def adjust_resolution(self, is_fine_tune: bool):
         if is_fine_tune:
-            self.sample_distance = 20
-            num_of_elements = 20
-            num_of_rotation_segments = 18
+            self.sample_distance = self.model_config.fine_sample_distance
+            num_of_elements = self.model_config.fine_n_elements
+            num_of_rotation_segments = self.model_config.fine_n_rotation_segments
         else:
-            self.sample_distance = 100
-            num_of_elements = 2
-            num_of_rotation_segments = 6
+            self.sample_distance = self.model_config.coarse_sample_distance
+            num_of_elements = self.model_config.coarse_n_elements
+            num_of_rotation_segments = self.model_config.coarse_n_rotation_segments
         print(
             f"Sample distance: {self.sample_distance}, "
             f"Num of elements: {num_of_elements}, "

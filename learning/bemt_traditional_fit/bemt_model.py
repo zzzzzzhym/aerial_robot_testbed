@@ -4,6 +4,7 @@ from inflow_model.bet import BladeElementTheory
 import inflow_model.propeller_lookup_table as propeller_lookup_table
 from drone import parameters
 import data_factory
+from learning.bemt_traditional_fit.fitting_config import ModelConfig
 
 
 class BemtModel:
@@ -19,10 +20,11 @@ class BemtModel:
         (0.0, 10.0),                           # k_body_drag
     ]
 
-    def __init__(self, blade, params):
+    def __init__(self, blade, params, model_config: ModelConfig):
         self.blade = blade
         self.bet_instance = BladeElementTheory(self.blade)
         self.params = params
+        self.model_config = model_config
         self.k_body_drag = 0.0  # kg/m, body aero drag coefficient along body-z from downwash
         self.sample_distance = None
         self.horizontal_weight = None
@@ -31,15 +33,15 @@ class BemtModel:
     def adjust_resolution(self, is_fine_tune):
         """When doing coarse search for optimization, sparse sample can save computation time. In other cases, dense sample is preferred."""
         if is_fine_tune:
-            self.sample_distance = 20
+            self.sample_distance = self.model_config.fine_sample_distance
             self.horizontal_weight = 1.0
-            num_of_elements = 20
-            num_of_rotation_segments = 18
+            num_of_elements = self.model_config.fine_n_elements
+            num_of_rotation_segments = self.model_config.fine_n_rotation_segments
         else:
-            self.sample_distance = 100
+            self.sample_distance = self.model_config.coarse_sample_distance
             self.horizontal_weight = 100
-            num_of_elements = 2
-            num_of_rotation_segments = 6
+            num_of_elements = self.model_config.coarse_n_elements
+            num_of_rotation_segments = self.model_config.coarse_n_rotation_segments
         print(
             f"Sample distance: {self.sample_distance}, "
             f"Horizontal weight: {self.horizontal_weight:.3f}, "

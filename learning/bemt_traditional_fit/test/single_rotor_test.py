@@ -1,12 +1,18 @@
 import unittest
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from inflow_model.blade_params import APC_8x6
 import data_factory
+from learning.bemt_traditional_fit.fitting_config import FittingConfig
 from learning.bemt_traditional_fit.single_rotor_model import SingleRotorBemtModel
 from learning.bemt_traditional_fit.single_rotor_objective import SingleRotorObjective
+
+_CONFIG = FittingConfig.from_yaml(
+    Path(__file__).parent.parent / "config_single_rotor.yaml"
+)
 
 
 def _make_mock_dataset(n: int, omega_val: float = 300.0,
@@ -64,7 +70,7 @@ class TestSingleRotorBemtModel(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.blade = APC_8x6()
-        cls.model = SingleRotorBemtModel(cls.blade, is_ccw_rotor0=False)
+        cls.model = SingleRotorBemtModel(cls.blade, is_ccw_rotor0=False, model_config=_CONFIG.model)
 
     def test_compute_rotor0_thrust_zero_omega(self):
         f = self.model.compute_rotor0_thrust(
@@ -129,7 +135,7 @@ class TestSingleRotorObjective(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         blade = APC_8x6()
-        cls.model = SingleRotorBemtModel(blade, is_ccw_rotor0=False)
+        cls.model = SingleRotorBemtModel(blade, is_ccw_rotor0=False, model_config=_CONFIG.model)
         cls.objective = SingleRotorObjective(cls.model)
 
     def test_get_loss_returns_scalar(self):
@@ -147,7 +153,7 @@ class TestSingleRotorObjective(unittest.TestCase):
         loss_zero = self.objective.get_loss(x, [dataset_zero])
 
         dataset_match = _make_mock_dataset(10, omega_val=200.0, sensed_wind=u_sensed)
-        model_tmp = SingleRotorBemtModel(APC_8x6(), is_ccw_rotor0=False)
+        model_tmp = SingleRotorBemtModel(APC_8x6(), is_ccw_rotor0=False, model_config=_CONFIG.model)
         model_tmp.blade.cl_1, model_tmp.blade.cl_2 = 5.3, 1.7
         model_tmp.blade.cd, model_tmp.blade.alpha_0 = 1.8, np.radians(20.6)
         model_tmp.bet_instance.refresh_blade()
