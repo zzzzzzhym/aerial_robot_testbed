@@ -64,7 +64,7 @@ class FittingEngine:
         self._print_result("Best coarse result", best_coarse.fun, best_coarse.x_physical)
 
         # Stage 3: further iterate only the best coarse result
-        self.model.adjust_resolution(is_fine_tune=False)
+        self.model.adjust_resolution(is_fine_tune=True)
         fine_result = self.fine_solver.run(lambda x: self.objective.get_loss(x, datasets), best_coarse.x_physical)
         self._print_result("Final result", fine_result.fun, fine_result.x_physical)
         return fine_result.x_physical
