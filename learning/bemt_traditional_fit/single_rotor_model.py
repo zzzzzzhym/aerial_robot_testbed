@@ -23,7 +23,7 @@ class SingleRotorBemtModel:
         (2.0, 50.0),                          # cl_1
         (0.0, 50.0),                          # cl_2
         (0.0, 5.0),                           # cd
-        (np.radians(10), np.radians(40)),     # alpha_0
+        (np.radians(0.0), np.radians(40)),     # alpha_0
     ]
 
     def __init__(self, blade, is_ccw_rotor0: bool, model_config: ModelConfig):

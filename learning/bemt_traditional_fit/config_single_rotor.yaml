@@ -11,12 +11,12 @@ model:
   fine_sample_distance: 20        # row stride for dataset subsampling, fine pass
 
 seed:
-  n_lhs: 64       # number of Latin Hypercube samples for global screening (smaller than full-vehicle: 4-param space)
-  n_keep: 3       # number of best seeds carried forward to coarse optimization
+  n_lhs: 2048       # number of Latin Hypercube samples for global screening (smaller than full-vehicle: 4-param space)
+  n_keep: 64       # number of best seeds carried forward to coarse optimization
   random_seed: 42 # random seed for reproducible LHS sampling
 
 solver:
-  coarse_maxiter: 30       # max iterations, coarse stage
+  coarse_maxiter: 100       # max iterations, coarse stage
   fine_maxiter: 100        # max iterations, fine stage
   single_maxiter: 100      # max iterations, single-seed run
   single_fine_maxiter: 200 # max iterations, single-seed fine-tune run
