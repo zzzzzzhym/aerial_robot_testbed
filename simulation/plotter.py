@@ -504,7 +504,7 @@ class Plotter:
         axs1[2, 8].plot(self.t_span, logger["pose_desired_dot2"][:, 2, 2], marker='x', label="pose_desired_dot2[2, 2]")
 
     def plot_disturbance_force(self, logger: np.ndarray):
-        if logger["f_disturb"].size == 0:
+        if "f_disturb" not in logger or logger["f_disturb"].size == 0:
             return
         fig, axs = plt.subplots(4, 2, sharex=True)
         fig.suptitle('disturbance')
@@ -654,7 +654,7 @@ class Plotter:
                 linewidth=speed_line_width[i],
                 zorder=3*i
             )
-            if logger[f"rotor_{i}_rotation_spd_delayed"].size > 0:
+            if f"rotor_{i}_rotation_spd_delayed" in logger and logger[f"rotor_{i}_rotation_spd_delayed"].size > 0:
                 axs[1].plot(
                     self.t_span,
                     logger[f"rotor_{i}_rotation_spd_delayed"],
@@ -673,7 +673,7 @@ class Plotter:
                 linewidth=speed_line_width[i],
                 zorder=3*i + 2
             )
-            if logger["rotor_speeds_desired_with_inflow"].size > 0:
+            if "rotor_speeds_desired_with_inflow" in logger and logger["rotor_speeds_desired_with_inflow"].size > 0:
                 axs[1].plot(
                     self.t_span,
                     logger["rotor_speeds_desired_with_inflow"][:, i],
@@ -683,7 +683,7 @@ class Plotter:
                     linewidth=speed_line_width[i] * 0.6,
                     zorder=3*i + 3
                 )
-            if logger["rotor_speeds_desired_no_inflow"].size > 0:
+            if "rotor_speeds_desired_no_inflow" in logger and logger["rotor_speeds_desired_no_inflow"].size > 0:
                 axs[1].plot(
                     self.t_span,
                     logger["rotor_speeds_desired_no_inflow"][:, i],
@@ -759,7 +759,7 @@ class Plotter:
         axs9.axis('equal')
 
     def plot_2d_xz_yz_trace(self, logger: np.ndarray, wall_x: float = 0.0, is_figure8=True):
-        if logger["tip_position"].size == 0 or logger["f_contact_normal"].size == 0:
+        if "tip_position" not in logger or logger["tip_position"].size == 0 or "f_contact_normal" not in logger or logger["f_contact_normal"].size == 0:
             return
 
         plt.rcParams["font.family"] = "serif"
@@ -818,7 +818,7 @@ class Plotter:
         ax1.set_aspect('equal', adjustable='box')
 
     def plot_contact_force(self, logger: np.ndarray):
-        if logger["f_contact_normal"].size == 0:
+        if "f_contact_normal" not in logger or logger["f_contact_normal"].size == 0:
             return
         f = logger["f_contact_normal"]
         f_mag = np.linalg.norm(f, axis=1)
