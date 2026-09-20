@@ -183,7 +183,7 @@ class WindEffectNearWall(DisturbanceForce):
     """
     def __init__(self, wall_origin=np.array([-0.5, 0, 0]), wall_norm=np.array([1, 0, 0]), wall_length=4.0, u_free=np.array([-5.0, 0.0, 0.0])) -> None:
         super().__init__()
-        self.propeller_force_table = propeller_lookup_table.PropellerLookupTable.Reader("p600_full_range")
+        self.propeller_force_table = propeller_lookup_table.PropellerLookupTable.Reader("p600_single_rotor")
         # self.propeller_force_table = propeller_lookup_table.PropellerLookupTable.Reader("apc_8x6_with_trail_refine")
         self.wind_field_model = flow_pass_flat_plate.FlowPassFlatPlate.Interface(wall_norm, np.array([0.0, 0.0, 1.0]), wall_origin, wall_length)
         self.u_free_const = u_free    # in FLU inertial frame

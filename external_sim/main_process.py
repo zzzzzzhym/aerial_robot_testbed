@@ -242,7 +242,6 @@ class P600(simulation.scenario.Dynamics):
         self.rotors.step_all_rotor_states(body_state, rotation_speed)
         for flow_speed, rotor in zip(flow_speeds, self.rotors.rotors):
             rotor.local_wind_velocity = self.background_wind_reader.get_velocity_at(rotor.position_inertial_frame)
-            print("rotor.local_wind_velocity", rotor.local_wind_velocity) # debug
             # rotor.local_wind_velocity = np.array(flow_speed)  # somehow only this one works
             rotor.sensed_wind_velocity = np.array(flow_speed)
         for f_body, rotor in zip(rotor_forces_body_frame, self.rotors.rotors):
