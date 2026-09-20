@@ -1,4 +1,5 @@
 import os
+import warnings
 import yaml
 import numpy as np
 import pandas as pd
@@ -6,46 +7,40 @@ import pickle
 
 
 class Logger:
-    """When the simulation logs data, it will be stored in a buffer. The buffer is a dictionary with keys defined in logger_config.py.
-    The values in the buffer are lists which can be directly appended without copying the whole list. 
-    After the simulation, the buffer is converted to a numpy array and stored in the output dictionary.
+    """Collects per-step signal dicts into lists, then converts to numpy arrays.
+
+    Buffer keys are created on first append (no pre-registration needed).
+    logger_config.yaml is a flat list of signal names to include in CSV/pkl output.
     """
     def __init__(self) -> None:
-        self.config = self.load_config("logger_config.yaml")
-        self.buffer = self.initialize_buffer()
+        self.csv_keys = self._load_csv_keys("logger_config.yaml")
+        self.buffer = {}
         self.output = {}
 
     @staticmethod
-    def load_config(filename: str) -> dict:
+    def _load_csv_keys(filename: str) -> list:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         config_path = os.path.join(current_dir, filename)
         with open(config_path, "r") as f:
             return yaml.safe_load(f)
 
-    def initialize_buffer(self) -> dict:
-        buffer = {}
-        for key in self.config:
-            buffer[key] = []
-        return buffer
-    
     def convert_buffer_to_output(self):
-        """Assume buffer and the final result dict has the same keys"""
         for key in self.buffer:
             self.output[key] = np.array(self.buffer[key])
 
-    def get_names_of_items_to_csv(self):
-        items = []
-        for key, val in self.config.items():
-            if "can_save_to_file" in val:
-                if val["can_save_to_file"]:
-                    items.append(key)
-        return items
+    def get_names_of_items_to_csv(self) -> list:
+        return self.csv_keys
 
     def make_data_frame(self) -> pd.DataFrame:
         df = pd.DataFrame()
-        items = self.get_names_of_items_to_csv()
-        for key in items:
-            df[key] = self.output[key].tolist()
+        missing_keys = []
+        for key in self.csv_keys:
+            if key in self.output:
+                df[key] = self.output[key].tolist()
+            else:
+                missing_keys.append(key)
+        if missing_keys:
+            warnings.warn(f"logger_config.yaml lists keys never logged, absent from CSV: {missing_keys}")
         return df
 
     def log_sim_result(self, file_name: str, type: str) -> None:
@@ -68,13 +63,11 @@ class Logger:
             raise ValueError("File already exist:\n" + file_path)
 
     def generate_column_map(self) -> dict:
-        """Generate a dictionary that maps the keys in the buffer to their corresponding components.
-        This is used to generate the header for the CSV file."""
-        headers = self.get_names_of_items_to_csv()
+        """Generate a mapping of CSV column names to their index positions."""
+        headers = [k for k in self.csv_keys if k in self.output]
         header_map = {header: idx for idx, header in enumerate(headers)}
         current_dir = os.path.dirname(os.path.abspath(__file__))
         map_file_path = os.path.join(current_dir, "column_map.yaml")
         with open(map_file_path, "w") as f:
             for key, value in header_map.items():
                 yaml.dump({key: value}, f)
-

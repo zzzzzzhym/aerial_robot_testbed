@@ -1,179 +1,45 @@
-# defines the data to be logged in the simulation
-# can_save_to_file: true means that the data will be saved as training data
-
-position:
-  can_save_to_file: true
-q:
-  can_save_to_file: true
-v:
-  can_save_to_file: true
-dv:
-  can_save_to_file: true
-e_x:
-  can_save_to_file: false
-e_v:
-  can_save_to_file: false
-e_a:
-  can_save_to_file: false
-e_j:
-  can_save_to_file: false
-e_r:
-  can_save_to_file: false
-e_omega:
-  can_save_to_file: false
-psi_r_rd:
-  can_save_to_file: false
-f_ctrl_input:
-  can_save_to_file: true
-f_ctrl_input_dot:
-  can_save_to_file: false
-f_d:
-  can_save_to_file: false
-f_d_dot:
-  can_save_to_file: false
-f_d_dot2:
-  can_save_to_file: false
-torque_ctrl_input:
-  can_save_to_file: true
-x_d:
-  can_save_to_file: false
-v_d:
-  can_save_to_file: false
-x_d_dot2:
-  can_save_to_file: false
-x_d_dot3:
-  can_save_to_file: false
-f_motor_desired:
-  can_save_to_file: false
-f_disturb:
-  can_save_to_file: true    
-f_disturb_est:
-  can_save_to_file: false
-f_disturb_est_base:
-  can_save_to_file: false
-f_disturb_est_bemt:
-  can_save_to_file: false
-torque_disturb:
-  can_save_to_file: true    
-torque_disturb_est:
-  can_save_to_file: false
-torque_disturb_est_base:
-  can_save_to_file: false
-torque_disturb_est_bemt:
-  can_save_to_file: false
-omega:
-  can_save_to_file: true  
-omega_dot:
-  can_save_to_file: true      
-omega_desired:
-  can_save_to_file: false
-pose:
-  can_save_to_file: false
-pose_dot:
-  can_save_to_file: false
-pose_desired:
-  can_save_to_file: false
-pose_desired_dot:
-  can_save_to_file: false
-pose_desired_dot2:
-  can_save_to_file: false
-rotor_0_rotation_spd:
-  can_save_to_file: true
-rotor_1_rotation_spd:
-  can_save_to_file: true
-rotor_2_rotation_spd:
-  can_save_to_file: true
-rotor_3_rotation_spd:
-  can_save_to_file: true
-rotor_0_position:
-  can_save_to_file: true
-rotor_1_position:
-  can_save_to_file: true
-rotor_2_position:
-  can_save_to_file: true
-rotor_3_position:
-  can_save_to_file: true
-rotor_0_velocity:
-  can_save_to_file: true
-rotor_1_velocity:
-  can_save_to_file: true
-rotor_2_velocity:
-  can_save_to_file: true
-rotor_3_velocity:
-  can_save_to_file: true
-b_1d:
-  can_save_to_file: false
-f_feedback:
-  can_save_to_file: false
-f_feedforward:
-  can_save_to_file: false
-f_disturb_compensation:
-  can_save_to_file: false
-torque_feedback:
-  can_save_to_file: false
-torque_coriolis:
-  can_save_to_file: false
-torque_feedforward:
-  can_save_to_file: false
-f_disturb_sensed_raw:
-  can_save_to_file: true
-rotor_0_rotation_spd_delayed:
-  can_save_to_file: false
-rotor_1_rotation_spd_delayed:
-  can_save_to_file: false
-rotor_2_rotation_spd_delayed:
-  can_save_to_file: false
-rotor_3_rotation_spd_delayed:
-  can_save_to_file: false
-f_propeller:
-  can_save_to_file: false
-f_body:
-  can_save_to_file: false
-rotor_0_local_wind_velocity:
-  can_save_to_file: true
-rotor_1_local_wind_velocity:
-  can_save_to_file: true
-rotor_2_local_wind_velocity:
-  can_save_to_file: true
-rotor_3_local_wind_velocity:
-  can_save_to_file: true
-rotor_0_sensed_wind_velocity:
-  can_save_to_file: true
-rotor_1_sensed_wind_velocity:
-  can_save_to_file: true
-rotor_2_sensed_wind_velocity:
-  can_save_to_file: true
-rotor_3_sensed_wind_velocity:
-  can_save_to_file: true
-rotor_0_f_rotor_inertial_frame:
-  can_save_to_file: true
-rotor_1_f_rotor_inertial_frame:
-  can_save_to_file: true
-rotor_2_f_rotor_inertial_frame:
-  can_save_to_file: true
-rotor_3_f_rotor_inertial_frame:
-  can_save_to_file: true
-rotor_0_thrust:
-  can_save_to_file: true
-rotor_1_thrust:
-  can_save_to_file: true
-rotor_2_thrust:
-  can_save_to_file: true
-rotor_3_thrust:
-  can_save_to_file: true
-shared_r_disk:
-  can_save_to_file: true
-sensed_dv:
-  can_save_to_file: true
-sensed_omega:
-  can_save_to_file: true
-tip_position:
-  can_save_to_file: false
-f_contact_normal:
-  can_save_to_file: false
-rotor_speeds_desired:
-  can_save_to_file: true
-rotor_speeds_desired_with_inflow:
-  can_save_to_file: false
-rotor_speeds_desired_no_inflow:
-  can_save_to_file: false
+# Signals to include when saving to CSV/pkl. All other logged signals are
+# available in memory (logger.output) but not written to file.
+- position
+- q
+- v
+- dv
+- f_ctrl_input
+- torque_ctrl_input
+- f_disturb
+- torque_disturb
+- omega
+- omega_dot
+- rotor_0_rotation_spd
+- rotor_1_rotation_spd
+- rotor_2_rotation_spd
+- rotor_3_rotation_spd
+- rotor_0_position
+- rotor_1_position
+- rotor_2_position
+- rotor_3_position
+- rotor_0_velocity
+- rotor_1_velocity
+- rotor_2_velocity
+- rotor_3_velocity
+- f_disturb_sensed_raw
+- rotor_0_local_wind_velocity
+- rotor_1_local_wind_velocity
+- rotor_2_local_wind_velocity
+- rotor_3_local_wind_velocity
+- rotor_0_sensed_wind_velocity
+- rotor_1_sensed_wind_velocity
+- rotor_2_sensed_wind_velocity
+- rotor_3_sensed_wind_velocity
+- rotor_0_f_rotor_inertial_frame
+- rotor_1_f_rotor_inertial_frame
+- rotor_2_f_rotor_inertial_frame
+- rotor_3_f_rotor_inertial_frame
+- rotor_0_thrust
+- rotor_1_thrust
+- rotor_2_thrust
+- rotor_3_thrust
+- shared_r_disk
+- sensed_dv
+- sensed_omega
+- rotor_speeds_desired

@@ -60,6 +60,8 @@ class Engine:
 
     def _append_log(self, logger: sim_logger.Logger, data: dict):
         for key, val in data.items():
+            if key not in logger.buffer:
+                logger.buffer[key] = []
             logger.buffer[key].append(val)
 
     def log_states(self, logger: sim_logger.Logger):
