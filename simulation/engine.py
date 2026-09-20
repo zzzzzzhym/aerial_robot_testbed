@@ -67,6 +67,8 @@ class Engine:
         self._append_log(logger, self.scenario.trajectory.get_log_data())
         if hasattr(self.scenario.dynamics, 'disturbance'):
             self._append_log(logger, log_adapter.log_data_from_disturbance(self.scenario.dynamics.disturbance))
+        if hasattr(self.scenario.dynamics, 'get_log_data'):
+            self._append_log(logger, self.scenario.dynamics.get_log_data())
 
 
 

@@ -110,8 +110,10 @@ class DroneController(simulation.scenario.Controller):
             "pose_desired":            None,
             "pose_desired_dot":        None,
             "pose_desired_dot2":       None,
-            "f_motor_desired":         None,
-            "rotor_speeds_desired":    None,
+            "f_motor_desired":                  None,
+            "rotor_speeds_desired":             None,
+            "rotor_speeds_desired_with_inflow": None,
+            "rotor_speeds_desired_no_inflow":   None,
         }
 
     def _log(self, name: str, value) -> None:
@@ -417,37 +419,47 @@ class DroneController(simulation.scenario.Controller):
     def step_motor_output(self, sensor_data: simulation.interface.SensorData):
         self.force_motor_desired = self.params.m_wrench_to_thrust@np.hstack((self.f[2], self.torque))
 
-        if self.is_using_inflow_model:  # with inflow model
-            # # use sensed wind speed
-            # for i, thrust in enumerate(self.force_motor_desired):
-            #     self.rotation_speed[i] = self.propeller_force_table.get_rotation_speed_sensed_wind(
-            #         sensor_data.rotors.rotors[i].sensed_wind_velocity,
-            #         sensor_data.rotors.rotors[i].velocity_inertial_frame,
-            #         sensor_data.rotors.rotors[i].pose,
-            #         sensor_data.rotors.rotors[i].rotation_speed,
-            #         thrust
-            #     )
-            
-            # use background wind speed
-            for i, thrust in enumerate(self.force_motor_desired):
-                self.rotation_speed[i] = self.propeller_force_table.get_rotation_speed(
-                    sensor_data.rotors.rotors[i].local_wind_velocity,
-                    sensor_data.rotors.rotors[i].velocity_inertial_frame,
-                    sensor_data.rotors.rotors[i].pose,
-                    sensor_data.rotors.rotors[i].rotation_speed,
-                    thrust
-                )
-        else:   # without inflow model
-            for i, thrust in enumerate(self.force_motor_desired):
-                self.rotation_speed[i] = self.propeller_force_table.get_rotation_speed(
-                    np.zeros(3),
-                    np.zeros(3),
-                    sensor_data.rotors.rotors[i].pose,
-                    sensor_data.rotors.rotors[i].rotation_speed,
-                    thrust
-                )
+        rotation_speed_with_inflow = np.zeros(4)
+        rotation_speed_no_inflow = np.zeros(4)
+
+        # with inflow model: use background wind speed
+        # # alternatively, use sensed wind speed:
+        # for i, thrust in enumerate(self.force_motor_desired):
+        #     rotation_speed_with_inflow[i] = self.propeller_force_table.get_rotation_speed_sensed_wind(
+        #         sensor_data.rotors.rotors[i].sensed_wind_velocity,
+        #         sensor_data.rotors.rotors[i].velocity_inertial_frame,
+        #         sensor_data.rotors.rotors[i].pose,
+        #         sensor_data.rotors.rotors[i].rotation_speed,
+        #         thrust
+        #     )
+        for i, thrust in enumerate(self.force_motor_desired):
+            rotation_speed_with_inflow[i] = self.propeller_force_table.get_rotation_speed(
+                sensor_data.rotors.rotors[i].local_wind_velocity,
+                sensor_data.rotors.rotors[i].velocity_inertial_frame,
+                sensor_data.rotors.rotors[i].pose,
+                sensor_data.rotors.rotors[i].rotation_speed,
+                thrust
+            )
+
+        # without inflow model: zero wind
+        for i, thrust in enumerate(self.force_motor_desired):
+            rotation_speed_no_inflow[i] = self.propeller_force_table.get_rotation_speed(
+                np.zeros(3),
+                np.zeros(3),
+                sensor_data.rotors.rotors[i].pose,
+                sensor_data.rotors.rotors[i].rotation_speed,
+                thrust
+            )
+
+        if self.is_using_inflow_model:
+            self.rotation_speed = rotation_speed_with_inflow.copy()
+        else:
+            self.rotation_speed = rotation_speed_no_inflow.copy()
+
         self._log("f_motor_desired", self.force_motor_desired)
         self._log("rotor_speeds_desired", self.rotation_speed)
+        self._log("rotor_speeds_desired_with_inflow", rotation_speed_with_inflow)
+        self._log("rotor_speeds_desired_no_inflow", rotation_speed_no_inflow)
 
     def get_control_output(self):
         """controller provides yaw torque and rotation speed because rotor yaw torque is not modeled"""

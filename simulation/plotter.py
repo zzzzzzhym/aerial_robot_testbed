@@ -673,6 +673,26 @@ class Plotter:
                 linewidth=speed_line_width[i],
                 zorder=3*i + 2
             )
+            if logger["rotor_speeds_desired_with_inflow"].size > 0:
+                axs[1].plot(
+                    self.t_span,
+                    logger["rotor_speeds_desired_with_inflow"][:, i],
+                    label=f"Desired Rotor {i} Speed (with inflow)",
+                    color=speed_colors[i],
+                    linestyle='-.',
+                    linewidth=speed_line_width[i] * 0.6,
+                    zorder=3*i + 3
+                )
+            if logger["rotor_speeds_desired_no_inflow"].size > 0:
+                axs[1].plot(
+                    self.t_span,
+                    logger["rotor_speeds_desired_no_inflow"][:, i],
+                    label=f"Desired Rotor {i} Speed (no inflow)",
+                    color=speed_colors[i],
+                    linestyle=':',
+                    linewidth=speed_line_width[i] * 0.6,
+                    zorder=3*i + 4
+                )
 
         axs[1].set_ylabel("Rotor Speed [RPM]")
         axs[1].legend(loc='upper right')

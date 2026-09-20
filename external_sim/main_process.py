@@ -80,6 +80,7 @@ class P600(simulation.scenario.Dynamics):
             tip_position=np.zeros(3),
         )
         self.i = 0
+        self._log_data = {"throttle_level": None}
 
         self.main_api.start()
 
@@ -145,6 +146,12 @@ class P600(simulation.scenario.Dynamics):
         else:
             self.main_api.set_object_property_float(wall, 'position.x', wall_offset)
 
+    def _log(self, name: str, value) -> None:
+        self._log_data[name] = value.copy() if hasattr(value, 'copy') else value
+
+    def get_log_data(self) -> dict:
+        return self._log_data
+
     def filter_motor_speed(self, speeds: np.ndarray) -> np.ndarray:
         # clip first (physical limits)
         speeds = np.clip(speeds, 50, 550)
@@ -193,6 +200,7 @@ class P600(simulation.scenario.Dynamics):
         # k = 0.5
         # throttles = [k, k, k, k]
         print("throttle level: ", throttles)
+        self._log("throttle_level", throttles)
         return {
             setter: throttle
             for setter, throttle in zip(self.motor_throttle_setters, throttles)

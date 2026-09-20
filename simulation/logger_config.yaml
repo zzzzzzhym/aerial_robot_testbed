@@ -173,3 +173,7 @@ f_contact_normal:
   can_save_to_file: false
 rotor_speeds_desired:
   can_save_to_file: true
+rotor_speeds_desired_with_inflow:
+  can_save_to_file: false
+rotor_speeds_desired_no_inflow:
+  can_save_to_file: false
