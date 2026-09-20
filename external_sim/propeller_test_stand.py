@@ -17,6 +17,11 @@ class PropellerTestStand(P600):
     STAGE_0_DURATION = 1.0    # seconds
     STAGE_1_DURATION = 10.0   # seconds
 
+    def configure_sim_environment(self, wind_speed, wall_offset, init_position):
+        super().configure_sim_environment(wind_speed, wall_offset, init_position)
+        wall = self.main_api.get_object('floor')
+        self.main_api.set_object_property_uint(wall, 'enabled', 1)
+
     def set_motor_throttles(self, speeds: np.ndarray) -> dict:
         t = self.i * self.dt
         if t < self.STAGE_0_DURATION:
