@@ -25,7 +25,8 @@ class DroneController(simulation.scenario.Controller):
         # propeller_lookup_table_name = "apc_8x6_with_trail"
         # propeller_lookup_table_name = "apc_8x6_fitted_in_noise_and_vibration"
         # propeller_lookup_table_name = "p600"
-        propeller_lookup_table_name = "p600_full_range"
+        # propeller_lookup_table_name = "p600_full_range"
+        propeller_lookup_table_name = "p600_single_rotor"
         self.is_using_baseline_disturbance_estimator = True
         self.is_using_pure_daiml_disturbance_estimator = False
         self.is_using_bemt_disturbance_estimator = False

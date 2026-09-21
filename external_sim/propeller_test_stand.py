@@ -21,7 +21,7 @@ class PropellerTestStand(P600):
         super().configure_sim_environment(wind_speed, wall_offset, init_position)
         wall = self.main_api.get_object('floor')
         self.main_api.set_object_property_uint(wall, 'enabled', 1)
-        self.main_api.set_object_property_float(wall, 'position.x', 2)  # so that stand does not fall outside of the wall (floor)
+        self.main_api.set_object_property_float(wall, 'position.x', init_position[0])  # so that stand does not fall outside of the wall (floor)
 
     def set_motor_throttles(self, speeds: np.ndarray) -> dict:
         t = self.i * self.dt
