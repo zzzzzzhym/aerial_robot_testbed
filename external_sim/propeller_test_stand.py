@@ -25,6 +25,7 @@ class PropellerTestStand(P600):
 
     def set_motor_throttles(self, speeds: np.ndarray) -> dict:
         t = self.i * self.dt
+        active_rotor_ids = [0, 1, 2, 3] # 0 defaults to active
         if t < self.STAGE_0_DURATION:
             throttle_0 = 0.0
         else:
@@ -32,6 +33,6 @@ class PropellerTestStand(P600):
                 (t - self.STAGE_0_DURATION) / self.STAGE_1_DURATION, 0.0, 1.0
             ))
         return {
-            setter: (throttle_0 if idx == 0 else 0.0)
+            setter: (throttle_0 if idx in active_rotor_ids else 0.0)
             for idx, setter in enumerate(self.motor_throttle_setters)
         }
