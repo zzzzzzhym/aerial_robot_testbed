@@ -95,6 +95,7 @@ class FitPlotter:
         sample_indices = list(range(0, data_len, sample_step))
 
         predicted = []
+        predicted_no_wind = []
         measured = []
         for i in sample_indices:
             r_disk = dataset.shared_r_disk[i]
@@ -103,15 +104,23 @@ class FitPlotter:
                 r_disk,
                 dataset.omega_0[i],
             )
+            f_pred_no_wind = model.compute_rotor0_thrust(
+                0.0,
+                r_disk,
+                dataset.omega_0[i],
+            )
             f_meas = r_disk.T @ dataset.rotor_0_f_rotor_inertial_frame[i]
             predicted.append(f_pred)
+            predicted_no_wind.append(f_pred_no_wind)
             measured.append(f_meas)
 
         fig, axs = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
         labels = ["Force X (disk)", "Force Y (disk)", "Force Z (disk)"]
         for j in range(3):
             axs[j].plot(sample_indices, [f[j] for f in predicted],
-                        label="Predicted", linestyle="None", marker=".")
+                        label="Predicted (with wind)", linestyle="None", marker=".")
+            axs[j].plot(sample_indices, [f[j] for f in predicted_no_wind],
+                        label="Predicted (no wind)", linestyle="None", marker="x")
             axs[j].plot(sample_indices, [f[j] for f in measured],
                         label="Measured", linestyle="-", marker=".")
             axs[j].set_ylabel(labels[j])
