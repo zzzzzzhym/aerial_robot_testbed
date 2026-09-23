@@ -876,6 +876,24 @@ class Plotter:
         axs10.set_zlabel('Z')
         axs10.axis('equal')
 
+    def print_wind_at_time(self, logger: np.ndarray, t: float):
+        """Print sensed and background wind velocity for all rotors at the given time."""
+        idx = int(t / self.dt)
+        idx = np.clip(idx, 0, len(self.t_span) - 1)
+        actual_t = self.t_span[idx]
+        print(f"t = {actual_t:.3f} s  (idx = {idx})")
+        for i in range(4):
+            key_sensed = f"rotor_{i}_sensed_wind_velocity"
+            key_bg = f"rotor_{i}_local_wind_velocity"
+            if key_sensed not in logger or key_bg not in logger:
+                print(f"  Rotor {i}: wind data not logged")
+                continue
+            sensed = logger[key_sensed][idx]
+            bg = logger[key_bg][idx]
+            print(f"  Rotor {i}:")
+            print(f"    sensed wind:     [{sensed[0]:+.3f}, {sensed[1]:+.3f}, {sensed[2]:+.3f}] m/s  |v|={np.linalg.norm(sensed):.3f}")
+            print(f"    background wind: [{bg[0]:+.3f}, {bg[1]:+.3f}, {bg[2]:+.3f}] m/s  |v|={np.linalg.norm(bg):.3f}")
+
     def plot_pose_in_given_time(self, logger: np.ndarray, t: float):
         idx = int(t/self.dt)
         idx = np.clip(idx, 0, len(self.t_span)-1)

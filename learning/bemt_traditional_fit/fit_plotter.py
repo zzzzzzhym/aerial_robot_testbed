@@ -1,3 +1,4 @@
+import numpy as np
 import matplotlib.pyplot as plt
 
 import data_factory
@@ -87,6 +88,18 @@ class FitPlotter:
             ax.legend()
 
         return fig0, fig1
+
+    @staticmethod
+    def print_wind_at_sample(dataset: data_factory.FittingDataset, i: int):
+        """Print sensed and background wind velocity for rotor 0 at the given sample index."""
+        print(f"Sample index: {i}")
+        bg = dataset.u_free_0[i]
+        print(f"  Rotor 0 background wind: [{bg[0]:+.3f}, {bg[1]:+.3f}, {bg[2]:+.3f}] m/s  |v|={np.linalg.norm(bg):.3f}")
+        if dataset.rotor_0_sensed_wind_velocity is not None:
+            sensed = dataset.rotor_0_sensed_wind_velocity[i]
+            print(f"  Rotor 0 sensed wind:     [{sensed[0]:+.3f}, {sensed[1]:+.3f}, {sensed[2]:+.3f}] m/s  |v|={np.linalg.norm(sensed):.3f}")
+        else:
+            print("  Rotor 0 sensed wind: not available in this dataset")
 
     @staticmethod
     def plot_single_rotor_fit(model, dataset: data_factory.FittingDataset, sample_step: int = 1):
