@@ -894,6 +894,55 @@ class Plotter:
             print(f"    sensed wind:     [{sensed[0]:+.3f}, {sensed[1]:+.3f}, {sensed[2]:+.3f}] m/s  |v|={np.linalg.norm(sensed):.3f}")
             print(f"    background wind: [{bg[0]:+.3f}, {bg[1]:+.3f}, {bg[2]:+.3f}] m/s  |v|={np.linalg.norm(bg):.3f}")
 
+    def print_rotor_forces_at_time(self, logger: np.ndarray, t: float, lookup_table, is_ccw_blade: list, bet_model=None):
+        """Print per-rotor force comparison at the given time.
+
+        Columns printed per rotor:
+            rotational speed, measured force, lookup-table force (with/without background wind),
+            and BET integrated force (if bet_model is provided).
+
+        Args:
+            lookup_table: PropellerLookupTable.Reader instance
+            is_ccw_blade: list of 4 bools, one per rotor
+            bet_model: optional SingleRotorBemtModel with fitted blade params
+        """
+        idx = int(t / self.dt)
+        idx = np.clip(idx, 0, len(self.t_span) - 1)
+        actual_t = self.t_span[idx]
+        r_disk = logger["shared_r_disk"][idx]
+
+        def _fmt(f_inertial):
+            thrust = (r_disk.T @ f_inertial)[2]
+            return (f"[{f_inertial[0]:+.3f}, {f_inertial[1]:+.3f}, {f_inertial[2]:+.3f}] N"
+                    f"  thrust={thrust:+.3f}")
+
+        print(f"t = {actual_t:.3f} s  (idx = {idx})")
+        for i in range(4):
+            omega    = logger[f"rotor_{i}_rotation_spd"][idx]
+            v_fwd    = logger[f"rotor_{i}_velocity"][idx]
+            u_free   = logger[f"rotor_{i}_local_wind_velocity"][idx]
+            f_meas   = logger[f"rotor_{i}_f_rotor_inertial_frame"][idx]
+            is_ccw   = is_ccw_blade[i]
+
+            f_wind, _    = lookup_table.get_rotor_forces(u_free,        v_fwd, r_disk, omega, is_ccw)
+            f_no_wind, _ = lookup_table.get_rotor_forces(np.zeros(3),   v_fwd, r_disk, omega, is_ccw)
+
+            print(f"  Rotor {i} (ccw={is_ccw}, omega={omega:.1f} rad/s):")
+            print(f"    measured:           {_fmt(f_meas)}")
+            print(f"    table (with wind):  {_fmt(f_wind)}")
+            print(f"    table (no wind):    {_fmt(f_no_wind)}")
+
+            if bet_model is not None:
+                key = f"rotor_{i}_sensed_wind_velocity"
+                if key in logger:
+                    u_sensed = logger[key][idx]
+                    omega_signed = omega if is_ccw else -omega
+                    f_bet_disk = bet_model.bet_instance.integrate_element_force(
+                        u_sensed, 0.0, np.zeros(3), r_disk, omega_signed, is_ccw_blade=is_ccw
+                    )
+                    f_bet = r_disk @ f_bet_disk
+                    print(f"    BET (sensed wind):  {_fmt(f_bet)}")
+
     def plot_pose_in_given_time(self, logger: np.ndarray, t: float):
         idx = int(t/self.dt)
         idx = np.clip(idx, 0, len(self.t_span)-1)
