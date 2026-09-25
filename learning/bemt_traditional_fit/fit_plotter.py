@@ -141,3 +141,40 @@ class FitPlotter:
         axs[2].set_xlabel("Sample Index")
         fig.tight_layout()
         return fig
+
+    @staticmethod
+    def plot_v_i_comparison(model, dataset: data_factory.FittingDataset, lookup_table, sample_step: int = 1):
+        """Plot v_i from lookup table vs axial component of sensed wind for rotor 0.
+
+        For no-wind hover data these should agree: v_i_LT ≈ -v_z_sensed_disk.
+        """
+        if dataset.rotor_0_sensed_wind_velocity is None:
+            print("rotor_0_sensed_wind_velocity not available in this dataset")
+            return None
+
+        data_len = len(dataset.rotor_0_sensed_wind_velocity)
+        sample_indices = list(range(0, data_len, sample_step))
+
+        v_i_lookup_table = []
+        v_z_sensed = []
+
+        for i in sample_indices:
+            r_disk = dataset.shared_r_disk[i]
+            omega = dataset.omega_0[i]
+
+            _, v_i_inertial = lookup_table.get_rotor_forces(
+                dataset.u_free_0[i], dataset.v_forward_0[i], r_disk, omega, model.is_ccw_rotor0
+            )
+            v_i_lookup_table.append(-(r_disk.T @ v_i_inertial)[2])
+
+            sensed = dataset.rotor_0_sensed_wind_velocity[i]
+            v_z_sensed.append(-(r_disk.T @ sensed)[2])
+
+        fig, ax = plt.subplots(figsize=(12, 4))
+        ax.plot(sample_indices, v_i_lookup_table, label="v_i from lookup table", linestyle="None", marker=".")
+        ax.plot(sample_indices, v_z_sensed, label="v_z from sensed wind (≈ v_i)", linestyle="-", marker=".")
+        ax.set_xlabel("Sample Index")
+        ax.set_ylabel("v_i [m/s]")
+        ax.legend()
+        fig.tight_layout()
+        return fig

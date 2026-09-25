@@ -216,7 +216,10 @@ class BladeElementTheory:
     def get_dm_dot(self, v_flow_disk_frame: np.ndarray, y: float):
         # the differential mass flow rate
         # v_flow_disk_frame already considers inflow velocity, thus the equation appears to be different from the paper
-        dm_dot = Air.rho*2*np.pi*y*self.dy*np.sqrt(v_flow_disk_frame[0]**2 + v_flow_disk_frame[1]**2 + v_flow_disk_frame[2]**2)
+        # use only the axial (perpendicular to disk) component to capture physically relevant mass flux
+        dm_dot = Air.rho*2*np.pi*y*self.dy*abs(v_flow_disk_frame[2])
+        # Glauert forward-flight model (Gill & D'Andrea 2017): uses total velocity magnitude including edgewise components
+        # dm_dot = Air.rho*2*np.pi*y*self.dy*np.sqrt(v_flow_disk_frame[0]**2 + v_flow_disk_frame[1]**2 + v_flow_disk_frame[2]**2)
         return dm_dot
 
     def get_differential_thrust_from_momentum(self, v_flow_disk_frame: np.ndarray, v_i: float, y: float):
@@ -234,31 +237,21 @@ class BladeElementTheory:
         return thrust_diff
     
     def guess_initial_v_i(self, y: float, omega_blade: float, is_ccw_blade=True):
-        """Make initial guess based on static thrust model."""
-        rpm_to_rad_per_sec = 2*np.pi/60
-        if is_ccw_blade:
-            omega_blade_in_rpm = omega_blade/rpm_to_rad_per_sec
+        """Make initial guess based on blade-specific static thrust data via momentum theory."""
+        omega_abs = abs(omega_blade)
+        sim_data_class = getattr(self.blade, 'sim_data_class', None)
+        if sim_data_class is not None:
+            thrust = np.interp(omega_abs, sim_data_class.get_omega_range(), sim_data_class.get_thrust_range())
         else:
-            omega_blade_in_rpm = -omega_blade/rpm_to_rad_per_sec
-        thrust_lbf = np.interp(
-            omega_blade_in_rpm,
-            APC_8x6_OfficialData.OMEGA_APC8X6_OFFICIAL_DATA_RPM,
-            APC_8x6_OfficialData.THRUST_APC8X6_OFFICIAL_DATA_LBF
-        )
-        pound_force_to_newton = 4.44822
-        thrust = thrust_lbf *pound_force_to_newton
-
-        inch_to_m = 0.0254
-        radius = 8*inch_to_m/2  # 8 inch diameter propeller
-        area = np.pi*radius**2  # rotor disk area
-        v_i = np.sqrt(thrust/(2*Air.rho*area))  # static thrust model
-        return  np.array([v_i])
+            thrust = np.interp(omega_abs, APC_8x6_OfficialData.get_omega_range(), APC_8x6_OfficialData.get_thrust_range())
+        v_i = np.sqrt(max(thrust, 0.0) / (2 * Air.rho * self.disk_area))  # static thrust model
+        return np.array([v_i])
 
     def solve_v_i(self, y: float, u_free: np.ndarray, v_forward: np.ndarray, r_disk: np.ndarray, omega_blade: float, is_ccw_blade=True):
         v_i_0 = self.guess_initial_v_i(y, omega_blade, is_ccw_blade)
         result = least_squares(
             fun=self.get_thrust_difference,
-            x0=v_i_0*0.5,   # in some conditions the gradient is too small to converge, 0.5 is a magic number
+            x0=v_i_0,
             args=(y, u_free, v_forward, r_disk, omega_blade, is_ccw_blade),
             method='trf',  # or 'lm' for small problems
             max_nfev=2000,
@@ -267,10 +260,10 @@ class BladeElementTheory:
             verbose=0
         )
         if not result.success:
-            print(f"failed to solve v_i in inflow model, message: {result.message}")
-            print(f"inputs: y: {y}, u_free: {u_free}, v_forward: {v_forward}, r_disk: {r_disk}, omega_blade: {omega_blade}, is_ccw_blade: {is_ccw_blade}")
-            print(f"v_i_0: {v_i_0}, v_i_solved: {result.x[0]}")
-            pass
+            warnings.warn(
+                f"solve_v_i did not converge: {result.message} | "
+                f"y={y:.4f}, omega={omega_blade:.2f}, v_i_0={v_i_0[0]:.4f}, v_i_solved={result.x[0]:.4f}"
+            )
         return result.x[0]
 
     def get_rotor_forces(self, u_free: np.ndarray, v_forward: np.ndarray, r_disk: np.ndarray, omega_blade: float, is_ccw_blade=True):
