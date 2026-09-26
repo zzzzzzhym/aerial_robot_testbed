@@ -876,11 +876,17 @@ class Plotter:
         axs10.set_zlabel('Z')
         axs10.axis('equal')
 
-    def print_wind_at_time(self, logger: np.ndarray, t: float):
-        """Print sensed and background wind velocity for all rotors at the given time."""
+    def print_wind_at_time(self, logger: np.ndarray, t: float, lookup_table=None, is_ccw_blade=None):
+        """Print per-rotor wind breakdown at the given time, all vectors in disk/body frame.
+
+        Args:
+            lookup_table: optional PropellerLookupTable.Reader — if provided, also prints v_i
+            is_ccw_blade: list of 4 bools required when lookup_table is provided
+        """
         idx = int(t / self.dt)
         idx = np.clip(idx, 0, len(self.t_span) - 1)
         actual_t = self.t_span[idx]
+        r_disk = logger["shared_r_disk"][idx]
         print(f"t = {actual_t:.3f} s  (idx = {idx})")
         for i in range(4):
             key_sensed = f"rotor_{i}_sensed_wind_velocity"
@@ -888,11 +894,24 @@ class Plotter:
             if key_sensed not in logger or key_bg not in logger:
                 print(f"  Rotor {i}: wind data not logged")
                 continue
-            sensed = logger[key_sensed][idx]
-            bg = logger[key_bg][idx]
+            sensed  = r_disk.T @ logger[key_sensed][idx]
+            bg      = r_disk.T @ logger[key_bg][idx]
+            rotor_v = r_disk.T @ logger[f"rotor_{i}_velocity"][idx]
+            def _fv(v):
+                return f"[{v[0]:+.3f}, {v[1]:+.3f}, {v[2]:+.3f}] m/s"
             print(f"  Rotor {i}:")
-            print(f"    sensed wind:     [{sensed[0]:+.3f}, {sensed[1]:+.3f}, {sensed[2]:+.3f}] m/s  |v|={np.linalg.norm(sensed):.3f}")
-            print(f"    background wind: [{bg[0]:+.3f}, {bg[1]:+.3f}, {bg[2]:+.3f}] m/s  |v|={np.linalg.norm(bg):.3f}")
+            print(f"    sensed wind (disk):        {_fv(sensed)}")
+            print(f"    background wind (body):    {_fv(bg)}")
+            print(f"    rotor velocity (body):     {_fv(rotor_v)}")
+            if lookup_table is not None and is_ccw_blade is not None:
+                omega   = logger[f"rotor_{i}_rotation_spd"][idx]
+                background_wind_inertial = logger[key_bg][idx]
+                rotor_velocity_inertial = logger[f"rotor_{i}_velocity"][idx]
+                _, v_i_inertial = lookup_table.get_rotor_forces(
+                    background_wind_inertial, rotor_velocity_inertial, r_disk, omega, is_ccw_blade[i]
+                )
+                v_i_scalar = np.dot(r_disk[:, 2], -v_i_inertial)
+                print(f"    v_i from lookup table:     {v_i_scalar:+.3f} m/s (downwash)")
 
     def print_rotor_forces_at_time(self, logger: np.ndarray, t: float, lookup_table, is_ccw_blade: list, bet_model=None):
         """Print per-rotor force comparison at the given time.
