@@ -222,6 +222,7 @@ class FitPlotter:
 
             v_i_lt = []
             v_i_measured = []
+            v_z_sensed = []
             x_vals = []
 
             for i in sample_indices:
@@ -235,10 +236,11 @@ class FitPlotter:
 
                 sensed = dataset.rotor_0_sensed_wind_velocity[i]
                 v_i_measured.append((r_disk.T @ (sensed - dataset.u_free_0[i]))[2])
+                v_z_sensed.append((r_disk.T @ sensed)[2])
 
                 x_vals.append(omega if x_axis == 'omega' else i)
 
-            all_v_z.append((x_vals, v_i_measured, label))
+            all_v_z.append((x_vals, v_z_sensed, label))
 
             fig, ax = plt.subplots(figsize=(12, 4))
             fig.suptitle(f"Dataset {label}")
