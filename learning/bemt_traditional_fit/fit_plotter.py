@@ -102,18 +102,19 @@ class FitPlotter:
             print("  Rotor 0 sensed wind: not available in this dataset")
 
     @staticmethod
-    def plot_single_rotor_fit(model, datasets, sample_step: int = 1,
+    def plot_single_rotor_fit(model, datasets, lookup_table, sample_step: int = 1,
                                x_axis: str = 'omega'):
         """Plot BET-predicted vs measured force for rotor 0 in disk frame.
 
         Args:
             model: fitted single-rotor model
             datasets: list of FittingDataset objects; each is labeled by its list index
+            lookup_table: PropellerLookupTable used for LT-based predictions
             sample_step: stride for selecting samples
             x_axis: 'omega' (default, rotor rotational speed) or 'sample_index'
 
         Returns:
-            per_figs: list of per-dataset figures (pred wind, pred no wind, measured)
+            per_figs: list of per-dataset figures (BET wind, LT wind, LT no wind, measured)
             fig_all: combined figure with all datasets' measured forces overlaid
         """
         axis_labels = ["Force X (disk)", "Force Y (disk)", "Force Z (disk)"]
@@ -126,38 +127,48 @@ class FitPlotter:
             label = str(idx)
             sample_indices = list(range(0, len(dataset), sample_step))
 
-            predicted = []
-            predicted_no_wind = []
+            bet_wind = []
+            lt_wind = []
+            lt_no_wind = []
             measured = []
             x_vals = []
 
             for i in sample_indices:
                 r_disk = dataset.shared_r_disk[i]
-                f_pred = model.compute_rotor0_thrust(
+                omega = dataset.omega_0[i]
+
+                f_bet_wind = model.compute_rotor0_thrust(
                     dataset.rotor_0_sensed_wind_velocity[i],
                     r_disk,
-                    dataset.omega_0[i],
+                    omega,
                 )
-                f_pred_no_wind = model.compute_rotor0_thrust(
-                    0.0,
-                    r_disk,
-                    dataset.omega_0[i],
+                f_lt_wind_inertial, _ = lookup_table.get_rotor_forces(
+                    dataset.u_free_0[i],
+                    dataset.v_forward_0[i],
+                    r_disk, omega, model.is_ccw_rotor0,
+                )
+                f_lt_no_wind_inertial, _ = lookup_table.get_rotor_forces(
+                    np.zeros(3), np.zeros(3), r_disk, omega, model.is_ccw_rotor0,
                 )
                 f_meas = r_disk.T @ dataset.rotor_0_f_rotor_inertial_frame[i]
-                predicted.append(f_pred)
-                predicted_no_wind.append(f_pred_no_wind)
+
+                bet_wind.append(f_bet_wind)
+                lt_wind.append(r_disk.T @ f_lt_wind_inertial)
+                lt_no_wind.append(r_disk.T @ f_lt_no_wind_inertial)
                 measured.append(f_meas)
-                x_vals.append(dataset.omega_0[i] if x_axis == 'omega' else i)
+                x_vals.append(omega if x_axis == 'omega' else i)
 
             all_measured.append((x_vals, measured, label))
 
             fig, axs = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
             fig.suptitle(f"Dataset {label}")
             for j in range(3):
-                axs[j].plot(x_vals, [f[j] for f in predicted],
-                            label="pred (wind)", linestyle="None", marker=".")
-                axs[j].plot(x_vals, [f[j] for f in predicted_no_wind],
-                            label="pred (no wind)", linestyle="None", marker="x")
+                axs[j].plot(x_vals, [f[j] for f in bet_wind],
+                            label="BET (wind)", linestyle="None", marker=".")
+                axs[j].plot(x_vals, [f[j] for f in lt_wind],
+                            label="LT (wind)", linestyle="None", marker="x")
+                axs[j].plot(x_vals, [f[j] for f in lt_no_wind],
+                            label="LT (no wind)", linestyle="None", marker="s")
                 axs[j].plot(x_vals, [f[j] for f in measured],
                             label="measured", linestyle="None", marker="^")
                 axs[j].set_ylabel(axis_labels[j])
