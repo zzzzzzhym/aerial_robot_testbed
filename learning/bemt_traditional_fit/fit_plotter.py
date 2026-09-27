@@ -214,10 +214,10 @@ class FitPlotter:
             _, v_i_inertial = lookup_table.get_rotor_forces(
                 dataset.u_free_0[i], dataset.v_forward_0[i], r_disk, omega, model.is_ccw_rotor0
             )
-            v_i_lookup_table.append(-(r_disk.T @ v_i_inertial)[2])
+            v_i_lookup_table.append((r_disk.T @ v_i_inertial)[2])
 
             sensed = dataset.rotor_0_sensed_wind_velocity[i]
-            v_z_sensed.append(-(r_disk.T @ sensed)[2])
+            v_z_sensed.append((r_disk.T @ (sensed - dataset.u_free_0[i]))[2])
 
         fig, ax = plt.subplots(figsize=(12, 4))
         ax.plot(sample_indices, v_i_lookup_table, label="v_i from lookup table", linestyle="None", marker=".")
