@@ -221,7 +221,7 @@ class FitPlotter:
             sample_indices = list(range(0, len(dataset), sample_step))
 
             v_i_lt = []
-            v_z_sensed = []
+            v_i_measured = []
             x_vals = []
 
             for i in sample_indices:
@@ -234,16 +234,16 @@ class FitPlotter:
                 v_i_lt.append((r_disk.T @ v_i_inertial)[2])
 
                 sensed = dataset.rotor_0_sensed_wind_velocity[i]
-                v_z_sensed.append((r_disk.T @ (sensed - dataset.u_free_0[i]))[2])
+                v_i_measured.append((r_disk.T @ (sensed - dataset.u_free_0[i]))[2])
 
                 x_vals.append(omega if x_axis == 'omega' else i)
 
-            all_v_z.append((x_vals, v_z_sensed, label))
+            all_v_z.append((x_vals, v_i_measured, label))
 
             fig, ax = plt.subplots(figsize=(12, 4))
             fig.suptitle(f"Dataset {label}")
             ax.plot(x_vals, v_i_lt, label="v_i LT", linestyle="None", marker=".")
-            ax.plot(x_vals, v_z_sensed, label="v_z sensed", linestyle="None", marker="x")
+            ax.plot(x_vals, v_i_measured, label="v_i measured", linestyle="None", marker="x")
             ax.set_xlabel(x_label)
             ax.set_ylabel("v_i disk-z [m/s]")
             ax.legend()
