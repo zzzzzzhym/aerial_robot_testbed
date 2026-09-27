@@ -210,7 +210,7 @@ class FitPlotter:
         x_label = "Omega [rad/s]" if x_axis == 'omega' else "Sample Index"
 
         all_v_z = []
-        fig, ax = plt.subplots(figsize=(12, 4))
+        per_figs = []
 
         for idx, dataset in enumerate(datasets):
             if dataset.rotor_0_sensed_wind_velocity is None:
@@ -239,13 +239,16 @@ class FitPlotter:
                 x_vals.append(omega if x_axis == 'omega' else i)
 
             all_v_z.append((x_vals, v_z_sensed, label))
-            ax.plot(x_vals, v_i_lt, label=f"{label} v_i LT", linestyle="None", marker=".")
-            ax.plot(x_vals, v_z_sensed, label=f"{label} v_z sensed", linestyle="None", marker="x")
 
-        ax.set_xlabel(x_label)
-        ax.set_ylabel("v_i disk-z [m/s]")
-        ax.legend()
-        fig.tight_layout()
+            fig, ax = plt.subplots(figsize=(12, 4))
+            fig.suptitle(f"Dataset {label}")
+            ax.plot(x_vals, v_i_lt, label="v_i LT", linestyle="None", marker=".")
+            ax.plot(x_vals, v_z_sensed, label="v_z sensed", linestyle="None", marker="x")
+            ax.set_xlabel(x_label)
+            ax.set_ylabel("v_i disk-z [m/s]")
+            ax.legend()
+            fig.tight_layout()
+            per_figs.append(fig)
 
         fig_all, ax_all = plt.subplots(figsize=(12, 4))
         for x_vals, v_z_sensed, label in all_v_z:
@@ -255,4 +258,4 @@ class FitPlotter:
         ax_all.legend()
         fig_all.tight_layout()
 
-        return fig, fig_all
+        return per_figs, fig_all
