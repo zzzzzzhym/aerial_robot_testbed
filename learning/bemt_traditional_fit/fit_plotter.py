@@ -108,12 +108,19 @@ class FitPlotter:
 
         Args:
             model: fitted single-rotor model
-            datasets: list of FittingDataset objects to overlay; each is labeled by its list index
+            datasets: list of FittingDataset objects; each is labeled by its list index
             sample_step: stride for selecting samples
             x_axis: 'omega' (default, rotor rotational speed) or 'sample_index'
+
+        Returns:
+            per_figs: list of per-dataset figures (pred wind, pred no wind, measured)
+            fig_all: combined figure with all datasets' measured forces overlaid
         """
-        fig, axs = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
         axis_labels = ["Force X (disk)", "Force Y (disk)", "Force Z (disk)"]
+        x_label = "Omega [rad/s]" if x_axis == 'omega' else "Sample Index"
+
+        all_measured = []
+        per_figs = []
 
         for idx, dataset in enumerate(datasets):
             label = str(idx)
@@ -142,20 +149,36 @@ class FitPlotter:
                 measured.append(f_meas)
                 x_vals.append(dataset.omega_0[i] if x_axis == 'omega' else i)
 
+            all_measured.append((x_vals, measured, label))
+
+            fig, axs = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
+            fig.suptitle(f"Dataset {label}")
             for j in range(3):
                 axs[j].plot(x_vals, [f[j] for f in predicted],
-                            label=f"{label} pred (wind)", linestyle="None", marker=".")
+                            label="pred (wind)", linestyle="None", marker=".")
                 axs[j].plot(x_vals, [f[j] for f in predicted_no_wind],
-                            label=f"{label} pred (no wind)", linestyle="None", marker="x")
+                            label="pred (no wind)", linestyle="None", marker="x")
                 axs[j].plot(x_vals, [f[j] for f in measured],
-                            label=f"{label} measured", linestyle="-", marker=".")
+                            label="measured", linestyle="None", marker="^")
+                axs[j].set_ylabel(axis_labels[j])
+                axs[j].legend()
+            axs[2].set_xlabel(x_label)
+            fig.tight_layout()
+            per_figs.append(fig)
 
+        fig_all, axs_all = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
+        fig_all.suptitle("All measured forces")
+        for x_vals, measured, label in all_measured:
+            for j in range(3):
+                axs_all[j].plot(x_vals, [f[j] for f in measured],
+                                label=label, linestyle="None", marker=".")
         for j in range(3):
-            axs[j].set_ylabel(axis_labels[j])
-            axs[j].legend()
-        axs[2].set_xlabel("Omega [rad/s]" if x_axis == 'omega' else "Sample Index")
-        fig.tight_layout()
-        return fig
+            axs_all[j].set_ylabel(axis_labels[j])
+            axs_all[j].legend()
+        axs_all[2].set_xlabel(x_label)
+        fig_all.tight_layout()
+
+        return per_figs, fig_all
 
     @staticmethod
     def plot_v_i_comparison(model, dataset: data_factory.FittingDataset, lookup_table, sample_step: int = 1):
