@@ -102,28 +102,22 @@ class FitPlotter:
             print("  Rotor 0 sensed wind: not available in this dataset")
 
     @staticmethod
-    def plot_single_rotor_fit(model, dataset_or_samples, sample_step: int = 1,
+    def plot_single_rotor_fit(model, datasets, sample_step: int = 1,
                                x_axis: str = 'omega'):
         """Plot BET-predicted vs measured force for rotor 0 in disk frame.
 
         Args:
             model: fitted single-rotor model
-            dataset_or_samples: a single FittingDataset, or a list of
-                (FittingDataset, label) tuples for multi-dataset overlay
+            datasets: list of FittingDataset objects to overlay; each is labeled by its list index
             sample_step: stride for selecting samples
-            x_axis: 'sample_index' (default) or 'omega' (rotor rotational speed)
+            x_axis: 'omega' (default, rotor rotational speed) or 'sample_index'
         """
-        if isinstance(dataset_or_samples, data_factory.FittingDataset):
-            samples = [(dataset_or_samples, "dataset")]
-        else:
-            samples = list(dataset_or_samples)
-
         fig, axs = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
         axis_labels = ["Force X (disk)", "Force Y (disk)", "Force Z (disk)"]
 
-        for dataset, label in samples:
-            data_len = len(dataset.rotor_0_sensed_wind_velocity)
-            sample_indices = list(range(0, data_len, sample_step))
+        for idx, dataset in enumerate(datasets):
+            label = str(idx)
+            sample_indices = list(range(0, len(dataset), sample_step))
 
             predicted = []
             predicted_no_wind = []
