@@ -93,6 +93,24 @@ class FittingManager:
         engine = _build_engine(model, objective, config)
         return cls(model, engine, datasets, init_guess)
 
+    @classmethod
+    def for_single_rotor_bemt(cls, blade, is_ccw_rotor0: bool,
+                              datasets: list[data_factory.FittingDataset], init_guess=None,
+                              config: FittingConfig = None):
+        """BEMT single-rotor fitting with root-found v_i from background wind.
+
+        Intended as a second-stage refinement after for_single_rotor.  Uses
+        momentum-theory root-finding (get_rotor_forces) per element instead of
+        integrating from sensed wind, so the aero coefficients are optimized
+        against the self-consistent BEMT solution.
+        """
+        config = config or FittingConfig.from_yaml(_CONFIG_DIR / "config_single_rotor.yaml")
+        model = SingleRotorBemtModel(blade, is_ccw_rotor0, model_config=config.model)
+        model.use_bemt = True
+        objective = SingleRotorObjective(model)
+        engine = _build_engine(model, objective, config)
+        return cls(model, engine, datasets, init_guess)
+
     def run(self, is_multiseed: bool = True, is_fine_tune: bool = False):
         """Run fitting.
 

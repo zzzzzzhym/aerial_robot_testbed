@@ -31,6 +31,7 @@ class SingleRotorBemtModel:
         self.is_ccw_rotor0 = is_ccw_rotor0
         self.bet_instance = BladeElementTheory(self.blade)
         self.model_config = model_config
+        self.use_bemt = False
         self.sample_distance = None
         self.adjust_resolution(is_fine_tune=False)
 
@@ -78,16 +79,48 @@ class SingleRotorBemtModel:
             is_ccw_blade=self.is_ccw_rotor0,
         )
 
-    def get_residual_force(self, dataset: data_factory.FittingDataset, i: int) -> np.ndarray:
-        """Residual = f_BET_disk - f_sensor_disk for rotor 0 at sample i.
+    def compute_rotor0_thrust_bemt(self, u_free: np.ndarray, v_forward: np.ndarray,
+                                   r_disk: np.ndarray, omega: float) -> np.ndarray:
+        """BEMT-predicted force for rotor 0 in disk frame.
 
-        Requires dataset.rotor_0_sensed_wind_velocity (present in datasets
-        recorded with the updated logger).
+        Uses momentum-theory root-finding per blade element to solve v_i from the
+        background free-stream wind u_free (induced velocity not pre-embedded).
+
+        Args:
+            u_free: rotor_0_local_wind_velocity — background wind (inertial frame, m/s)
+            v_forward: rotor_0_velocity — disk velocity in inertial frame (m/s)
+            r_disk: disk-to-inertial rotation matrix
+            omega: absolute rotor speed (rad/s, always positive)
+
+        Returns:
+            force in disk frame (N)
         """
-        f_predicted_disk = self.compute_rotor0_thrust(
-            dataset.rotor_0_sensed_wind_velocity[i],
-            dataset.shared_r_disk[i],
-            dataset.omega_0[i],
+        omega_signed = omega if self.is_ccw_rotor0 else -omega
+        f_x, f_y, f_z, _ = self.bet_instance.get_rotor_forces(
+            u_free, v_forward, r_disk, omega_signed, is_ccw_blade=self.is_ccw_rotor0,
         )
-        f_measured_disk = dataset.shared_r_disk[i].T @ dataset.rotor_0_f_rotor_inertial_frame[i]
+        return np.array([f_x, f_y, f_z])
+
+    def get_residual_force(self, dataset: data_factory.FittingDataset, i: int) -> np.ndarray:
+        """Residual = f_predicted_disk - f_sensor_disk for rotor 0 at sample i.
+
+        When use_bemt=False (default): BET with rotor_0_sensed_wind_velocity.
+        When use_bemt=True: BEMT with root-found v_i from rotor_0_local_wind_velocity.
+        """
+        r_disk = dataset.shared_r_disk[i]
+        omega = dataset.omega_0[i]
+        if self.use_bemt:
+            f_predicted_disk = self.compute_rotor0_thrust_bemt(
+                dataset.u_free_0[i],
+                dataset.v_forward_0[i],
+                r_disk,
+                omega,
+            )
+        else:
+            f_predicted_disk = self.compute_rotor0_thrust(
+                dataset.rotor_0_sensed_wind_velocity[i],
+                r_disk,
+                omega,
+            )
+        f_measured_disk = r_disk.T @ dataset.rotor_0_f_rotor_inertial_frame[i]
         return f_predicted_disk - f_measured_disk
