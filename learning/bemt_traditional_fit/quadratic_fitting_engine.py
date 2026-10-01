@@ -1,5 +1,9 @@
 """Engine for QuadraticRotorModel — fits one quadratic profile per wind condition."""
 
+from pathlib import Path
+
+import numpy as np
+
 import data_factory
 from learning.bemt_traditional_fit.quadratic_rotor_model import QuadraticRotorModel
 from learning.bemt_traditional_fit.quadratic_solver import QuadraticSolver
@@ -23,9 +27,11 @@ class QuadraticFittingEngine:
         """Fit one quadratic per dataset; return a list of PerConditionResult."""
         results = []
         for idx, dataset in enumerate(datasets):
-            print(f"\n=== Fitting condition {idx + 1}/{len(datasets)}: {dataset.path_to_data_file} ===")
-            params = self._solver.run(self.model, dataset)
             u_free_x, pitch = extract_wind_condition(dataset)
+            name = Path(dataset.path_to_data_file).name
+            print(f"Fitting condition {idx + 1}/{len(datasets)} [{name}]:  "
+                  f"u_free_x={u_free_x:.3f} m/s  pitch={np.degrees(pitch):.1f} deg")
+            params = self._solver.run(self.model, dataset)
             results.append(PerConditionResult(params=params, u_free_x=u_free_x,
                                               pitch=pitch, dataset=dataset))
         return results

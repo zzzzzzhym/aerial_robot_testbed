@@ -275,36 +275,10 @@ class TestMakeLookupTableFromQuadraticFit(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# QuadraticFitPlotter tests — plotter just traverses the results
+# QuadraticFitPlotter tests — one figure per condition, fit vs measured
 # ---------------------------------------------------------------------------
 
 class TestQuadraticFitPlotter(unittest.TestCase):
-
-    def _results(self, n):
-        """n results with distinct thrust coefficients and wind speeds."""
-        results = []
-        for k in range(n):
-            params = np.array([0, 0, 0,  0, 0, 0,  (k + 1) * 1e-5, 0.0, 0.0])
-            results.append(PerConditionResult(params=params, u_free_x=float(k), pitch=0.0))
-        return results
-
-    def test_one_line_per_condition(self):
-        ax = QuadraticFitPlotter.plot_force_profiles(self._results(3),
-                                                     omega_range=np.linspace(0, 1000, 10))
-        self.assertEqual(len(ax.get_lines()), 3)
-
-    def test_empty_results_no_lines(self):
-        ax = QuadraticFitPlotter.plot_force_profiles([], omega_range=np.linspace(0, 1000, 10))
-        self.assertEqual(len(ax.get_lines()), 0)
-
-    def test_thrust_curve_matches_quadratic(self):
-        a_fz = 2e-5
-        result = PerConditionResult(params=np.array([0, 0, 0,  0, 0, 0,  a_fz, 0.0, 0.0]),
-                                    u_free_x=0.0, pitch=0.0)
-        omega_range = np.array([0.0, 500.0, 1000.0])
-        ax = QuadraticFitPlotter.plot_force_profiles([result], omega_range=omega_range)
-        y = ax.get_lines()[0].get_ydata()
-        np.testing.assert_allclose(y, a_fz * omega_range ** 2, atol=1e-9)
 
     def _fitted_results(self, specs):
         """Build real fitted results (with datasets attached) via the engine.
@@ -316,25 +290,33 @@ class TestQuadraticFitPlotter(unittest.TestCase):
                     for a_fz, w in specs]
         return QuadraticFittingEngine(QuadraticRotorModel()).fit(datasets)
 
-    def test_comparison_has_fit_and_measured_per_condition(self):
+    def test_one_figure_per_condition(self):
         results = self._fitted_results([(2e-5, None),
                                         (1.5e-5, np.array([3.0, 0.0, 0.0]))])
-        ax = QuadraticFitPlotter.plot_fit_comparison(results)
-        lines = ax.get_lines()
-        # Two lines per condition: a fitted curve + a measured-markers line.
-        self.assertEqual(len(lines), 4)
-        measured = [ln for ln in lines if ln.get_linestyle() == "None"]
-        self.assertEqual(len(measured), 2)
+        figs = QuadraticFitPlotter.plot_fit_comparison(results)
+        self.assertEqual(len(figs), 2)
 
-    def test_comparison_curve_matches_measured_on_noiseless_data(self):
+    def test_empty_results_no_figures(self):
+        figs = QuadraticFitPlotter.plot_fit_comparison([])
+        self.assertEqual(figs, [])
+
+    def test_each_figure_has_fit_and_measured_line(self):
+        results = self._fitted_results([(2e-5, None)])
+        fig = QuadraticFitPlotter.plot_fit_comparison(results)[0]
+        ax = fig.axes[0]
+        lines = ax.get_lines()
+        self.assertEqual(len(lines), 2)  # one measured (markers) + one fit curve
+        measured = [ln for ln in lines if ln.get_linestyle() == "None"]
+        self.assertEqual(len(measured), 1)
+
+    def test_curve_matches_measured_on_noiseless_data(self):
         a_fz = 2e-5
-        results = self._fitted_results([(a_fz, None)])
-        ax = QuadraticFitPlotter.plot_fit_comparison(results)
-        measured = next(ln for ln in ax.get_lines() if ln.get_linestyle() == "None")
+        fig = QuadraticFitPlotter.plot_fit_comparison(self._fitted_results([(a_fz, None)]))[0]
+        measured = next(ln for ln in fig.axes[0].get_lines() if ln.get_linestyle() == "None")
         x, y = measured.get_xdata(), measured.get_ydata()
         np.testing.assert_allclose(y, a_fz * x ** 2, atol=1e-6)
 
-    def test_comparison_raises_without_dataset(self):
+    def test_raises_without_dataset(self):
         result = PerConditionResult(params=np.zeros(9), u_free_x=0.0, pitch=0.0)  # dataset=None
         with self.assertRaises(ValueError):
             QuadraticFitPlotter.plot_fit_comparison([result])

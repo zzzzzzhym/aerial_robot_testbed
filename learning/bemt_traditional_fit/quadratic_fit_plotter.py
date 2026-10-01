@@ -8,49 +8,10 @@ from learning.bemt_traditional_fit.per_condition_result import PerConditionResul
 
 
 class QuadraticFitPlotter:
-    """Plots fitted quadratic profiles, one line per wind condition."""
+    """Plots the quadratic fit against the measured data, one figure per condition."""
 
     # component index into predict_forces_disk: [f_x, f_y, f_z]
     _COMPONENT_LABELS = ("fx", "fy", "fz")
-
-    @staticmethod
-    def plot_force_profiles(results: list[PerConditionResult],
-                            omega_range: np.ndarray = None,
-                            component: int = 2,
-                            ax=None):
-        """Plot fitted force-vs-omega profiles, one line per wind condition.
-
-        Traverses `results` without assuming how many conditions there are.
-
-        Args:
-            results: list of PerConditionResult from FittingManager.run_quadratic_fit();
-                     each carries its fitted params and wind condition.
-            omega_range: rotor speeds (rad/s) to evaluate; default linspace(0, 1500, 300).
-            component: force component to plot (0=fx, 1=fy, 2=fz thrust).
-            ax: optional matplotlib Axes to draw on; one is created if None.
-
-        Returns:
-            The matplotlib Axes.
-        """
-        if omega_range is None:
-            omega_range = np.linspace(0, 1500, 300)
-        if ax is None:
-            _, ax = plt.subplots()
-
-        model = QuadraticRotorModel()
-        for result in results:
-            model.apply_params(result.params)
-            force = [model.predict_forces_disk(w)[component] for w in omega_range]
-            ax.plot(omega_range, force,
-                    label=f"u={result.u_free_x:.1f} m/s, pitch={np.degrees(result.pitch):.0f}°")
-
-        label = QuadraticFitPlotter._COMPONENT_LABELS[component]
-        ax.set_xlabel("omega (rad/s)")
-        ax.set_ylabel(f"Force {label} (N)")
-        ax.set_title("Fitted quadratic force profiles per wind condition")
-        if len(results) > 0:
-            ax.legend()
-        return ax
 
     @staticmethod
     def _measured_disk_force(dataset, component: int, sample_step: int):
@@ -70,13 +31,11 @@ class QuadraticFitPlotter:
     def plot_fit_comparison(results: list[PerConditionResult],
                             component: int = 2,
                             n_curve: int = 300,
-                            sample_step: int = 1,
-                            ax=None):
-        """Overlay each fitted quadratic against the measured data it was fitted on.
+                            sample_step: int = 1):
+        """Plot each fitted quadratic against the measured data it was fitted on.
 
-        For every condition: measured samples are drawn as markers and the fitted
-        quadratic as a line in the same colour.  Traverses `results` without
-        assuming how many conditions there are.
+        Generates one figure per wind condition (not all overlaid), traversing
+        `results` without assuming how many conditions there are.
 
         Args:
             results: list of PerConditionResult from FittingManager.run_quadratic_fit();
@@ -84,15 +43,14 @@ class QuadraticFitPlotter:
             component: force component to plot (0=fx, 1=fy, 2=fz thrust).
             n_curve: number of points used to draw each fitted curve.
             sample_step: stride for thinning measured samples.
-            ax: optional matplotlib Axes to draw on; one is created if None.
 
         Returns:
-            The matplotlib Axes.
+            list of matplotlib Figures, one per condition (same order as results).
         """
-        if ax is None:
-            _, ax = plt.subplots()
-
+        label = QuadraticFitPlotter._COMPONENT_LABELS[component]
         model = QuadraticRotorModel()
+        figs = []
+
         for result in results:
             if result.dataset is None:
                 raise ValueError(
@@ -106,15 +64,15 @@ class QuadraticFitPlotter:
             omega_curve = np.linspace(float(omega_meas.min()), float(omega_meas.max()), n_curve)
             f_curve = [model.predict_forces_disk(w)[component] for w in omega_curve]
 
-            cond_label = f"u={result.u_free_x:.1f} m/s, pitch={np.degrees(result.pitch):.0f}°"
-            line, = ax.plot(omega_curve, f_curve, label=f"{cond_label} (fit)")
-            ax.plot(omega_meas, f_meas, linestyle="None", marker=".",
-                    color=line.get_color(), label=f"{cond_label} (measured)")
-
-        label = QuadraticFitPlotter._COMPONENT_LABELS[component]
-        ax.set_xlabel("omega (rad/s)")
-        ax.set_ylabel(f"Force {label} (N)")
-        ax.set_title("Quadratic fit vs measured data per wind condition")
-        if len(results) > 0:
+            fig, ax = plt.subplots()
+            ax.plot(omega_meas, f_meas, linestyle="None", marker=".", label="measured")
+            ax.plot(omega_curve, f_curve, label="quadratic fit")
+            ax.set_xlabel("omega (rad/s)")
+            ax.set_ylabel(f"Force {label} (N)")
+            ax.set_title(f"u_free_x={result.u_free_x:.3f} m/s  "
+                         f"pitch={np.degrees(result.pitch):.1f} deg")
             ax.legend()
-        return ax
+            fig.tight_layout()
+            figs.append(fig)
+
+        return figs
