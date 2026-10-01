@@ -8,6 +8,9 @@ from learning.bemt_traditional_fit.objective import FittingObjective
 from learning.bemt_traditional_fit.single_rotor_model import SingleRotorBemtModel
 from learning.bemt_traditional_fit.single_rotor_objective import SingleRotorObjective
 from learning.bemt_traditional_fit.body_drag_objective import BodyDragObjective
+from learning.bemt_traditional_fit.quadratic_rotor_model import QuadraticRotorModel
+from learning.bemt_traditional_fit.quadratic_fitting_engine import QuadraticFittingEngine
+from learning.bemt_traditional_fit.per_condition_result import PerConditionResult
 from learning.bemt_traditional_fit.fit_plotter import FitPlotter
 from learning.bemt_traditional_fit.fitting_engine import FittingEngine
 from learning.bemt_traditional_fit.seed_generator import MultiSeedGenerator, SingleSeedGenerator
@@ -36,8 +39,8 @@ class FittingManager:
         FittingManager.for_single_rotor(blade, is_ccw_rotor0, datasets)
     """
 
-    def __init__(self, model, engine: FittingEngine,
-                 datasets: list[data_factory.FittingDataset], init_guess=None):
+    def __init__(self, model, engine, datasets: list[data_factory.FittingDataset],
+                 init_guess=None):
         self.model = model
         self.engine = engine
         self.datasets = datasets
@@ -94,6 +97,18 @@ class FittingManager:
         return cls(model, engine, datasets, init_guess)
 
     @classmethod
+    def for_quadratic_rotor(cls, datasets: list[data_factory.FittingDataset]):
+        """Quadratic per-condition fitting via closed-form least squares.
+
+        Fits [a_fx, b_fx, c_fx, a_fy, b_fy, c_fy, a_fz, b_fz, c_fz] for each
+        dataset independently using QuadraticSolver (lstsq — no iterative optimizer).
+        Call run_quadratic_fit() to run.
+        """
+        model = QuadraticRotorModel()
+        engine = QuadraticFittingEngine(model)
+        return cls(model, engine, datasets)
+
+    @classmethod
     def for_single_rotor_bemt(cls, blade, is_ccw_rotor0: bool,
                               datasets: list[data_factory.FittingDataset], init_guess=None,
                               config: FittingConfig = None):
@@ -126,6 +141,16 @@ class FittingManager:
             raise ValueError("init_guess is required for single-seed fitting")
         seed_gen = SingleSeedGenerator(self.init_guess.tolist())
         return self.engine.fit_single(self.datasets, seed_generator=seed_gen, is_fine_tune=is_fine_tune)
+
+    def run_quadratic_fit(self) -> list[PerConditionResult]:
+        """Fit one quadratic profile per wind condition by handing the datasets to the engine.
+
+        The manager doesn't know or care how many conditions there are — the engine
+        owns the loop and returns a list of PerConditionResult.
+        """
+        if self.engine is None:
+            raise RuntimeError("run_quadratic_fit() requires an engine; use a factory method to build the manager.")
+        return self.engine.fit(self.datasets)
 
     def plot(self, dataset_idx: int = 0, lookup_table=None, is_using_lookup_table: bool = False,
              sample_step: int = 1, params=None):
