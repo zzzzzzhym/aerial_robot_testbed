@@ -32,7 +32,8 @@ def make_lookup_table(fitted_params, blade: inflow_model.blade_params.Blade, tab
         PropellerLookupTable.Maker.make_propeller_lookup_table(table_name, blade)
 
 _DEFAULT_QUADRATIC_OMEGA_RANGE = np.array(
-    [0, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1500, 2000, 2600], dtype=float
+    [0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700,
+     750, 800, 850, 900, 950, 1000, 1500, 2000, 2600], dtype=float
 )
 
 
