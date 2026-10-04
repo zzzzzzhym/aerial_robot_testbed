@@ -24,6 +24,7 @@ class PropellerLookupTable:
             self._u_sensed_disk_plane_bounds = None  # set when interpolator is built
             self._u_sensed_normal_bounds = None       # set when interpolator is built
             self.interpolator = None
+            self._warned_out_of_range = False  # emit the out-of-range warning only once
             self.load_lookup_table(filename)
 
         def read_data(self, filename: str):
@@ -110,10 +111,12 @@ class PropellerLookupTable:
             if np.abs(omega - omega_clipped) > self.max_allowed_extrapolation or \
             np.abs(u_free_x - u_free_x_clipped) > self.max_allowed_extrapolation or \
             np.abs(pitch - pitch_clipped) > self.max_allowed_extrapolation:
-                warnings.warn(f"Warning: Interpolating outside the range:\n"
-                              f"u_free_x [m/s]: {u_free_x} (clipped: {u_free_x_clipped}),\n"
-                              f"pitch [deg]: {pitch*180/np.pi} (clipped: {pitch_clipped*180/np.pi}),\n"
-                              f"omega: {omega} (clipped: {omega_clipped})")
+                if not self._warned_out_of_range:
+                    self._warned_out_of_range = True
+                    warnings.warn(f"Warning: Interpolating outside the range (warned once):\n"
+                                  f"u_free_x [m/s]: {u_free_x} (clipped: {u_free_x_clipped}),\n"
+                                  f"pitch [deg]: {pitch*180/np.pi} (clipped: {pitch_clipped*180/np.pi}),\n"
+                                  f"omega: {omega} (clipped: {omega_clipped})")
             return self.interpolator((u_free_x_clipped, pitch_clipped, omega_clipped))
 
         def query_data_from_table_sensed_wind(self, u_sensed_disk_plane: float, u_sensed_normal: float, omega: float):
