@@ -29,19 +29,23 @@ class QuadraticFitPlotter:
 
     @staticmethod
     def plot_fit_comparison(results: list[PerConditionResult],
+                            lookup_table=None,
                             component: int = 2,
                             n_curve: int = 300,
                             sample_step: int = 1):
         """Plot each fitted quadratic against the measured data it was fitted on.
 
         Generates one figure per wind condition (not all overlaid), traversing
-        `results` without assuming how many conditions there are. Each figure also
-        overlays the zero-wind condition's fit as a dashed reference line, so the
-        effect of wind on the thrust curve is visible against the no-wind baseline.
+        `results` without assuming how many conditions there are. When a lookup
+        table is given, each figure also overlays the table's zero-wind condition
+        as a dashed reference line, so the effect of wind on the thrust curve is
+        visible against the no-wind baseline.
 
         Args:
             results: list of PerConditionResult from FittingManager.run_quadratic_fit();
                      each must carry its source `dataset` (the engine sets this).
+            lookup_table: optional PropellerLookupTable.Reader; its zero-wind
+                     (u_free_x=0, pitch=0) curve is drawn dashed as the reference.
             component: force component to plot (0=fx, 1=fy, 2=fz thrust).
             n_curve: number of points used to draw each fitted curve.
             sample_step: stride for thinning measured samples.
@@ -52,13 +56,6 @@ class QuadraticFitPlotter:
         label = QuadraticFitPlotter._COMPONENT_LABELS[component]
         model = QuadraticRotorModel()
         figs = []
-
-        # Zero-wind condition used as the dashed reference in every figure.
-        zero_result = min(results, key=lambda r: abs(r.u_free_x)) if results else None
-        has_zero = zero_result is not None and abs(zero_result.u_free_x) < 0.5
-        zero_model = QuadraticRotorModel()
-        if has_zero:
-            zero_model.apply_params(zero_result.params)
 
         for result in results:
             if result.dataset is None:
@@ -76,10 +73,11 @@ class QuadraticFitPlotter:
             fig, ax = plt.subplots()
             ax.plot(omega_meas, f_meas, linestyle="None", marker=".", label="measured")
             ax.plot(omega_curve, f_curve, label="quadratic fit")
-            # Dashed reference: the zero-wind fit evaluated over the same omega range.
-            if has_zero and result is not zero_result:
-                f_curve_zero = [zero_model.predict_forces_disk(w)[component] for w in omega_curve]
-                ax.plot(omega_curve, f_curve_zero, linestyle="--", label="fit @ zero wind")
+            # Dashed reference: the lookup table's zero-wind curve over the same omega range.
+            if lookup_table is not None:
+                f_curve_zero = [lookup_table.query_data_from_table(0.0, 0.0, w)[component]
+                                for w in omega_curve]
+                ax.plot(omega_curve, f_curve_zero, linestyle="--", label="table @ zero wind")
             ax.set_xlabel("omega (rad/s)")
             ax.set_ylabel(f"Force {label} (N)")
             ax.set_title(f"u_free_x={result.u_free_x:.3f} m/s  "
