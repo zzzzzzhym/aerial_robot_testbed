@@ -77,8 +77,15 @@ def make_lookup_table_from_quadratic_fit(
     table = np.zeros((n_u, n_p, n_w, 4))  # [f_x, f_y, f_z, v_i]
 
     for i, u in enumerate(u_vals):
+        if abs(u) < 0.01:
+            # Zero wind: pitch is degenerate (no wind direction), so the single
+            # hover fit applies to every pitch column.
+            hover_params = next((cond_map[(u, p)] for p in p_vals if (u, p) in cond_map), None)
+            row_params = {p: hover_params for p in p_vals}
+        else:
+            row_params = {p: cond_map.get((u, p)) for p in p_vals}
         for j, p in enumerate(p_vals):
-            params = cond_map.get((u, p))
+            params = row_params[p]
             if params is None:
                 print(f"  Warning: no data for u_free_x={u:.4f}, pitch={np.degrees(p):.1f} deg — left as zero.")
                 continue
