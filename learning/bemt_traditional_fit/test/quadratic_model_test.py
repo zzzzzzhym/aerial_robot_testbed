@@ -16,6 +16,7 @@ from learning.bemt_traditional_fit.quadratic_fitting_engine import QuadraticFitt
 from learning.bemt_traditional_fit.quadratic_fit_plotter import QuadraticFitPlotter
 from learning.bemt_traditional_fit.per_condition_result import (
     PerConditionResult, extract_wind_condition,
+    NOMINAL_U_FREE_X, NOMINAL_PITCH,
 )
 from learning.bemt_traditional_fit.post_processing import make_lookup_table_from_quadratic_fit
 
@@ -194,6 +195,38 @@ class TestExtractWindCondition(unittest.TestCase):
         u_free_x, pitch = extract_wind_condition(dataset)
         self.assertAlmostEqual(u_free_x, 2.0, places=4)
         self.assertAlmostEqual(pitch, np.pi / 2, places=4)
+
+    def test_pitch_ignores_disk_tilt(self):
+        """Pitch is taken in the inertial frame, so a tilted disk must not change it."""
+        dataset = _make_quadratic_dataset(20, np.linspace(100, 1000, 10),
+                                          wind=np.array([-3.0, 0.0, 0.0]))
+        # Tilt every disk by 40 deg about y; label must stay horizontal (pitch 0).
+        theta = np.radians(40.0)
+        r = np.array([[np.cos(theta), 0, np.sin(theta)],
+                      [0, 1, 0],
+                      [-np.sin(theta), 0, np.cos(theta)]])
+        dataset.shared_r_disk = np.array([r] * len(dataset))
+        u_free_x, pitch = extract_wind_condition(dataset)
+        self.assertAlmostEqual(u_free_x, 3.0, places=4)
+        self.assertAlmostEqual(pitch, 0.0, places=4)
+
+    def test_snap_to_nominal_grid(self):
+        """A slightly-off condition snaps onto the nominal sweep grid."""
+        pitch_deg, mag = 29.0, 2.98
+        pr = np.radians(pitch_deg)
+        wind = np.array([-mag * np.cos(pr), 0.0, mag * np.sin(pr)])
+        dataset = _make_quadratic_dataset(20, np.linspace(100, 1000, 10), wind=wind)
+        u_free_x, pitch = extract_wind_condition(dataset, NOMINAL_U_FREE_X, NOMINAL_PITCH)
+        self.assertEqual(u_free_x, 3.0)
+        self.assertAlmostEqual(pitch, np.radians(30.0), places=12)
+
+    def test_snap_warns_when_far(self):
+        """Snapping a condition far from any nominal value emits a warning."""
+        dataset = _make_quadratic_dataset(20, np.linspace(100, 1000, 10),
+                                          wind=np.array([-7.0, 0.0, 0.0]))
+        with self.assertWarns(UserWarning):
+            u_free_x, _ = extract_wind_condition(dataset, NOMINAL_U_FREE_X, NOMINAL_PITCH)
+        self.assertEqual(u_free_x, 5.0)  # nearest of {3,5,10}
 
 
 # ---------------------------------------------------------------------------

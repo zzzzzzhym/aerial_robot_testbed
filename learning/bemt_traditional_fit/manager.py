@@ -97,15 +97,20 @@ class FittingManager:
         return cls(model, engine, datasets, init_guess)
 
     @classmethod
-    def for_quadratic_rotor(cls, datasets: list[data_factory.FittingDataset]):
+    def for_quadratic_rotor(cls, datasets: list[data_factory.FittingDataset],
+                            nominal_u_free_x=None, nominal_pitch=None):
         """Quadratic per-condition fitting via closed-form least squares.
 
         Fits [a_fx, b_fx, c_fx, a_fy, b_fy, c_fy, a_fz, b_fz, c_fz] for each
         dataset independently using QuadraticSolver (lstsq — no iterative optimizer).
         Call run_quadratic_fit() to run.
+
+        nominal_u_free_x / nominal_pitch: optional sweep grids; when given, each
+        condition's (u_free_x, pitch) label is snapped onto them so the resulting
+        lookup table lands on a clean regular grid.
         """
         model = QuadraticRotorModel()
-        engine = QuadraticFittingEngine(model)
+        engine = QuadraticFittingEngine(model, nominal_u_free_x, nominal_pitch)
         return cls(model, engine, datasets)
 
     @classmethod
