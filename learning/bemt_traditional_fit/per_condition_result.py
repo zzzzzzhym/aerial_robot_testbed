@@ -19,7 +19,7 @@ import data_factory
 # (see simulation/training_data_user_guide.ipynb fitting_config).  Pass these to
 # extract_wind_condition to snap each dataset's measured wind onto the regular
 # (u_free_x, pitch) grid so the lookup table's RegularGridInterpolator sees clean axes.
-NOMINAL_U_FREE_X = np.array([3.0, 5.0, 10.0])                               # m/s
+NOMINAL_U_FREE_X = np.array([3.0, 5.0])                               # m/s
 NOMINAL_PITCH = np.radians([-90.0, -60.0, -30.0, 0.0, 30.0, 60.0, 90.0])    # rad
 
 
