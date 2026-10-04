@@ -76,3 +76,57 @@ class QuadraticFitPlotter:
             figs.append(fig)
 
         return figs
+
+    @staticmethod
+    def plot_fit_comparison_overlay(results: list[PerConditionResult],
+                                    component: int = 2,
+                                    n_curve: int = 300,
+                                    sample_step: int = 1,
+                                    show_measured: bool = True):
+        """Overlay every condition's fitted quadratic on a single figure.
+
+        Same data as plot_fit_comparison, but stacked into one axes so the
+        conditions can be compared directly. Each condition gets its own color;
+        the measured samples (if shown) share the color of their fit curve.
+
+        Args:
+            results: list of PerConditionResult from FittingManager.run_quadratic_fit().
+            component: force component to plot (0=fx, 1=fy, 2=fz thrust).
+            n_curve: number of points used to draw each fitted curve.
+            sample_step: stride for thinning measured samples.
+            show_measured: also scatter the measured samples behind each fit curve.
+
+        Returns:
+            a single matplotlib Figure with all conditions overlaid.
+        """
+        label = QuadraticFitPlotter._COMPONENT_LABELS[component]
+        model = QuadraticRotorModel()
+        colors = plt.cm.viridis(np.linspace(0, 1, len(results)))
+
+        fig, ax = plt.subplots()
+        for result, color in zip(results, colors):
+            if result.dataset is None:
+                raise ValueError(
+                    "plot_fit_comparison_overlay needs result.dataset; use results from "
+                    "FittingManager.run_quadratic_fit() (the engine attaches it)."
+                )
+            omega_meas, f_meas = QuadraticFitPlotter._measured_disk_force(
+                result.dataset, component, sample_step)
+
+            model.apply_params(result.params)
+            omega_curve = np.linspace(float(omega_meas.min()), float(omega_meas.max()), n_curve)
+            f_curve = [model.predict_forces_disk(w)[component] for w in omega_curve]
+
+            condition_label = (f"u={result.u_free_x:.1f} m/s, "
+                               f"pitch={np.degrees(result.pitch):.0f} deg")
+            if show_measured:
+                ax.plot(omega_meas, f_meas, linestyle="None", marker=".",
+                        color=color, alpha=0.4)
+            ax.plot(omega_curve, f_curve, color=color, label=condition_label)
+
+        ax.set_xlabel("omega (rad/s)")
+        ax.set_ylabel(f"Force {label} (N)")
+        ax.set_title(f"Quadratic fit {label} — all conditions")
+        ax.legend(fontsize="small")
+        fig.tight_layout()
+        return fig
