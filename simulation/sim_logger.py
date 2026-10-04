@@ -43,14 +43,21 @@ class Logger:
             warnings.warn(f"logger_config.yaml lists keys never logged, absent from CSV: {missing_keys}")
         return df
 
-    def log_sim_result(self, file_name: str, type: str) -> None:
-        if type == 'csv':
-            suffix = ".csv"
-        elif type == 'pkl':
-            suffix = ".pkl"
+    @staticmethod
+    def result_file_path(file_name: str, type: str) -> str:
+        """Build the path a result would be written to, without writing anything."""
+        suffix = ".csv" if type == 'csv' else ".pkl"
         current_dir = os.path.dirname(os.path.abspath(__file__))
         upper_dir = os.path.dirname(current_dir)
-        file_path = os.path.join(upper_dir, "data", "training", file_name + suffix)
+        return os.path.join(upper_dir, "data", "training", file_name + suffix)
+
+    @staticmethod
+    def result_exists(file_name: str, type: str) -> bool:
+        """Whether a result file already exists (for pre-sim skipping)."""
+        return os.path.exists(Logger.result_file_path(file_name, type))
+
+    def log_sim_result(self, file_name: str, type: str) -> None:
+        file_path = Logger.result_file_path(file_name, type)
         if not os.path.exists(file_path):
             if type == 'csv':
                 df = self.make_data_frame()
