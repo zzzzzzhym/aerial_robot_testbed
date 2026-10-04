@@ -951,6 +951,15 @@ class Plotter:
             print(f"    table (with wind):  {_fmt(f_wind)}")
             print(f"    table (no wind):    {_fmt(f_no_wind)}")
 
+            # Controller replication: omega the controller would command to hit the
+            # desired motor thrust, with background wind (inflow model) vs assuming no
+            # wind (no-inflow path zeros both u_free and v_forward, as in controller.py).
+            thrust_desired = logger["f_motor_desired"][idx][i]
+            omega_cmd_wind    = lookup_table.get_rotation_speed(u_free,      v_fwd,       r_disk, omega, thrust_desired)
+            omega_cmd_no_wind = lookup_table.get_rotation_speed(np.zeros(3), np.zeros(3), r_disk, omega, thrust_desired)
+            print(f"    cmd omega (thrust_des={thrust_desired:+.3f} N):  "
+                  f"with wind={omega_cmd_wind:.1f}  no wind={omega_cmd_no_wind:.1f} rad/s")
+
             if bet_model is not None:
                 key = f"rotor_{i}_sensed_wind_velocity"
                 if key in logger:
