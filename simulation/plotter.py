@@ -936,7 +936,8 @@ class Plotter:
                     f"  thrust={thrust:+.3f}")
 
         print(f"t = {actual_t:.3f} s  (idx = {idx})")
-        for i in range(4):
+        active_rotors_id = [0, 1, 2, 3]
+        for i in active_rotors_id:
             omega    = logger[f"rotor_{i}_rotation_spd"][idx]
             v_fwd    = logger[f"rotor_{i}_velocity"][idx]
             u_free   = logger[f"rotor_{i}_local_wind_velocity"][idx]
