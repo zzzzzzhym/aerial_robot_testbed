@@ -106,8 +106,30 @@ class TestSingleRotorBemtModel(unittest.TestCase):
         residual = self.model.get_residual_force(dataset, 0)
         np.testing.assert_array_almost_equal(residual, np.zeros(3), decimal=5)
 
-    def test_bounds_have_four_entries(self):
-        self.assertEqual(len(SingleRotorBemtModel.BOUNDS), 4)
+    def test_bounds_match_parameter_names(self):
+        self.assertEqual(len(SingleRotorBemtModel.BOUNDS), 6)
+        self.assertEqual(len(SingleRotorBemtModel.PARAMETER_NAMES), 6)
+        self.assertEqual(
+            SingleRotorBemtModel.PARAMETER_NAMES,
+            ("cl_1", "cl_2", "cd", "alpha_0", "alpha_zero_lift", "alpha_d_min"),
+        )
+
+    def test_apply_params_sets_new_aero_angles(self):
+        model = SingleRotorBemtModel(APC_8x6(), is_ccw_rotor0=False, model_config=_CONFIG.model)
+        x = np.array([5.3, 1.7, 1.8, np.radians(20.6), np.radians(-2.0), np.radians(3.0)])
+        model.apply_params(x)
+        self.assertAlmostEqual(model.blade.alpha_zero_lift, np.radians(-2.0))
+        self.assertAlmostEqual(model.blade.alpha_d_min, np.radians(3.0))
+        # the coefficient object actually used by BET must reflect the new values
+        self.assertAlmostEqual(model.bet_instance.coeff.alpha_zero_lift, np.radians(-2.0))
+        self.assertAlmostEqual(model.bet_instance.coeff.alpha_d_min, np.radians(3.0))
+
+    def test_apply_params_backward_compatible_with_four(self):
+        model = SingleRotorBemtModel(APC_8x6(), is_ccw_rotor0=False, model_config=_CONFIG.model)
+        model.apply_params(np.array([5.3, 1.7, 1.8, np.radians(20.6)]))
+        # trailing params untouched -> remain at blade defaults
+        self.assertAlmostEqual(model.blade.alpha_zero_lift, 0.0)
+        self.assertAlmostEqual(model.blade.alpha_d_min, 0.0)
 
     def test_sensed_wind_loaded_from_dataset(self):
         u_sensed = np.array([1.0, 0.5, -2.0])

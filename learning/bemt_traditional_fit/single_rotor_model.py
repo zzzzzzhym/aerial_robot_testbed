@@ -8,7 +8,7 @@ from learning.bemt_traditional_fit.fitting_config import ModelConfig
 class SingleRotorBemtModel:
     """BET model for single-rotor (test stand) fitting.
 
-    Fits cl_1, cl_2, cd, alpha_0 on rotor 0 only.
+    Fits cl_1, cl_2, cd, alpha_0, alpha_zero_lift, alpha_d_min on rotor 0 only.
     No k_body_drag term — the body is fixed to the ground.
 
     Uses rotor_0_sensed_wind_velocity (background wind + induced velocity,
@@ -17,13 +17,15 @@ class SingleRotorBemtModel:
     v_flow_disk_frame exactly.
     """
 
-    PARAMETER_NAMES = ("cl_1", "cl_2", "cd", "alpha_0")
+    PARAMETER_NAMES = ("cl_1", "cl_2", "cd", "alpha_0", "alpha_zero_lift", "alpha_d_min")
 
     BOUNDS = [
-        (2.0, 50.0),                          # cl_1
-        (0.0, 50.0),                          # cl_2
-        (0.0, 5.0),                           # cd
+        (2.0, 50.0),                           # cl_1
+        (0.0, 50.0),                           # cl_2
+        (0.0, 5.0),                            # cd
         (np.radians(0.0), np.radians(40)),     # alpha_0
+        (np.radians(-10.0), np.radians(10.0)), # alpha_zero_lift
+        (np.radians(-10.0), np.radians(10.0)), # alpha_d_min
     ]
 
     def __init__(self, blade, is_ccw_rotor0: bool, model_config: ModelConfig):
@@ -37,6 +39,12 @@ class SingleRotorBemtModel:
 
     def apply_params(self, x):
         self.blade.cl_1, self.blade.cl_2, self.blade.cd, self.blade.alpha_0 = x[:4]
+        # alpha_zero_lift / alpha_d_min are optional trailing params; keep backward
+        # compatibility with 4-element vectors (they stay at the blade's defaults).
+        if len(x) > 4:
+            self.blade.alpha_zero_lift = x[4]
+        if len(x) > 5:
+            self.blade.alpha_d_min = x[5]
         self.bet_instance.refresh_blade()
 
     def adjust_resolution(self, is_fine_tune: bool):

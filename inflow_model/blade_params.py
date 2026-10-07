@@ -4,7 +4,8 @@ import matplotlib.pyplot as plt
 
 
 class Blade:
-    def __init__(self, num_of_blades=2, y_max=0.1, cl_1=5.3, cl_2=1.7, alpha_0=np.radians(20.6), cd=1.8, cd_0=0.01):
+    def __init__(self, num_of_blades=2, y_max=0.1, cl_1=5.3, cl_2=1.7, alpha_0=np.radians(20.6), cd=1.8, cd_0=0.01,
+                 alpha_zero_lift=0.0, alpha_d_min=0.0):
         self.num_of_blades = num_of_blades
         self.y_max = y_max  # blade span range from y_min to y_max
         self.y_min = 0
@@ -13,6 +14,8 @@ class Blade:
         self.alpha_0 = alpha_0
         self.cd = cd
         self.cd_0 = cd_0
+        self.alpha_zero_lift = alpha_zero_lift  # zero-lift angle of attack [rad]
+        self.alpha_d_min = alpha_d_min          # minimum-drag angle of attack [rad]
         self.name = "NA"
         self.sim_data_class = None  # subclasses set this to a GroundTruthBladeData subclass
 
