@@ -26,11 +26,12 @@ class DroneController(simulation.scenario.Controller):
         # propeller_lookup_table_name = "apc_8x6_fitted_in_noise_and_vibration"
         # propeller_lookup_table_name = "p600"
         # propeller_lookup_table_name = "p600_full_range"
-        propeller_lookup_table_name = "p600_single_rotor"
+        # propeller_lookup_table_name = "p600_single_rotor"
+        propeller_lookup_table_name = "p600_single_rotor_quadratic"
         self.is_using_baseline_disturbance_estimator = True
         self.is_using_pure_daiml_disturbance_estimator = False
         self.is_using_bemt_disturbance_estimator = False
-        self.is_using_inflow_model = True
+        self.is_using_inflow_model = False
         print("DroneController: using inflow model: ", self.is_using_inflow_model)
         print("DroneController: using pure DAIML disturbance estimator: ", self.is_using_pure_daiml_disturbance_estimator)
         print("DroneController: using baseline disturbance estimator: ", self.is_using_baseline_disturbance_estimator)
