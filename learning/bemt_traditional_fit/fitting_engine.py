@@ -23,9 +23,10 @@ class FittingEngine:
         self.single_fine_solver = single_fine_solver
 
     def _format_parameters(self, values) -> str:
+        angle_params = ("alpha_0", "alpha_zero_lift", "alpha_d_min")
         parts = []
         for name, value in zip(self.model.PARAMETER_NAMES, values):
-            if name == "alpha_0":
+            if name in angle_params:
                 parts.append(f"{name}={np.degrees(value):.3f}deg")
             else:
                 parts.append(f"{name}={value:.3f}")

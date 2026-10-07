@@ -14,7 +14,8 @@ class Coeffecients:
         cd=1.8,
         cd_0=0.01,
         cp=1.328,
-        alpha_l0=0.0,
+        alpha_zero_lift=0.0,
+        alpha_d_min=0.0,
     ):
         """
         Initialize the Coeffecients with parameters.
@@ -24,7 +25,8 @@ class Coeffecients:
         - cl_2: Lift coefficient parameter
         - cd: Drag coefficient parameter
         - alpha0: Stall angle in radians
-        - alpha_l0: Zero-lift angle in radians
+        - alpha_zero_lift: Zero-lift angle of attack in radians
+        - alpha_d_min: Minimum-drag angle of attack in radians
         """
         self.cl_1 = cl_1
         self.cl_2 = cl_2
@@ -32,7 +34,8 @@ class Coeffecients:
         self.cd = cd
         self.cd_0 = cd_0
         self.cp = cp
-        self.alpha_l0 = alpha_l0
+        self.alpha_zero_lift = alpha_zero_lift
+        self.alpha_d_min = alpha_d_min
         self.sigma = sigma_function.SigmaFunction(alpha_0=self.alpha_0)
 
     def get_cl(self, alpha):
@@ -45,15 +48,12 @@ class Coeffecients:
         Returns:
         - CL value (float)
         """
-        alpha_eff = alpha - self.alpha_l0
+        alpha_attached = alpha - self.alpha_zero_lift
+        sigma = self.sigma.compute(alpha)
         CL = (
-            (1 - self.sigma.compute(alpha_eff)) * self.cl_1 * alpha_eff
-            + self.sigma.compute(alpha_eff)
-            * self.cl_2
-            * np.sin(alpha_eff)
-            * np.cos(alpha_eff)
+            (1 - sigma) * self.cl_1 * alpha_attached
+            + sigma * self.cl_2 * np.sin(alpha) * np.cos(alpha)
         )
-
         return CL
 
     def get_cd(self, alpha, u, chord):
@@ -66,10 +66,12 @@ class Coeffecients:
         Returns:
         - CD value (float)
         """
-        alpha_eff = alpha - self.alpha_l0
-        rn_clamped = np.maximum(Coeffecients.get_reynolds_number(u, chord), 1)
+        alpha_drag = alpha - self.alpha_d_min
+        rn_clamped = np.maximum(
+            Coeffecients.get_reynolds_number(u, chord), 1
+        )
         CD = (
-            self.cd * np.sin(alpha_eff) ** 2
+            self.cd * np.sin(alpha_drag) ** 2
             + 2 * 1.02 * self.cp / np.sqrt(rn_clamped)
             + self.cd_0
         )

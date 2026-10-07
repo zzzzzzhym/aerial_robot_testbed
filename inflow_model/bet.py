@@ -21,7 +21,15 @@ class BladeElementTheory:
         self.refresh_blade()
 
     def refresh_blade(self):
-        self.coeff = aero_coeff.Coeffecients(cl_1=self.blade.cl_1, cl_2=self.blade.cl_2, alpha_0=self.blade.alpha_0, cd=self.blade.cd, cd_0=self.blade.cd_0)
+        self.coeff = aero_coeff.Coeffecients(
+            cl_1=self.blade.cl_1,
+            cl_2=self.blade.cl_2,
+            alpha_0=self.blade.alpha_0,
+            cd=self.blade.cd,
+            cd_0=self.blade.cd_0,
+            alpha_zero_lift=self.blade.alpha_zero_lift,
+            alpha_d_min=self.blade.alpha_d_min,
+        )
         self.disk_area = np.pi*(self.blade.y_max**2 - self.blade.y_min**2)  # rotor disk area    
         self.set_integration_resolution(self.num_of_elements, self.num_of_rotation_segments)
 
