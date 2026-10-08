@@ -19,5 +19,5 @@ solver:
   fine_maxiter: 80        # max iterations, fine stage
   single_maxiter: 100     # max iterations, single-seed run
   single_fine_maxiter: 200 # max iterations, single-seed fine-tune run
-  ftol: 1.0e-4            # function value tolerance for convergence
+  ftol: 1.0e-2            # function value tolerance for convergence
   xtol: 1.0e-3            # parameter value tolerance for convergence

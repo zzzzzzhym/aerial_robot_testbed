@@ -37,7 +37,7 @@ def make_lookup_table(fitted_params, blade: inflow_model.blade_params.Blade, tab
             pitch_range=np.array([0.0]),
         )
     else:
-        PropellerLookupTable.Maker.make_propeller_lookup_table(table_name, blade)
+        PropellerLookupTable.Maker.make_propeller_lookup_table(table_name, blade, u_free_x_range=(0, 1, 2, 3, 4, 5, 7))
 
 _DEFAULT_QUADRATIC_OMEGA_RANGE = np.array(
     [0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700,
