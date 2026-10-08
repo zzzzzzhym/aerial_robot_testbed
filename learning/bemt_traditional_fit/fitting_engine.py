@@ -56,12 +56,20 @@ class FittingEngine:
 
         # Stage 2: coarse local optimization from the best seeds
         coarse_results = []
-        for _, seed in selected:
+        for candidate, (_, seed) in enumerate(selected, start=1):
             print(f"Evaluating: {self._format_parameters(seed)}")
             result = self.coarse_solver.run(lambda x: self.objective.get_loss(x, datasets), seed)
-            coarse_results.append(result)
-        coarse_results.sort(key=lambda r: r.fun)
-        best_coarse = coarse_results[0]
+            coarse_results.append((candidate, result))
+        coarse_results.sort(key=lambda item: item[1].fun)
+        best_candidate = coarse_results[0][0]
+        best_coarse = coarse_results[0][1]
+
+        print("\nCoarse tune results:")
+        print("candidate | final loss | (best)")
+        for candidate, result in sorted(coarse_results, key=lambda item: item[0]):
+            marker = " | (best)" if candidate == best_candidate else ""
+            print(f"{candidate} | {result.fun:.4f}{marker}")
+
         self._print_result("Best coarse result", best_coarse.fun, best_coarse.x_physical)
 
         # Stage 3: further iterate only the best coarse result
