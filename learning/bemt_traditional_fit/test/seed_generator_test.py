@@ -4,7 +4,9 @@ import numpy as np
 from learning.bemt_traditional_fit.seed_generator import (
     generate_seeds, MultiSeedGenerator, SingleSeedGenerator,
 )
-from learning.bemt_traditional_fit.bemt_model import BemtModel
+from learning.bemt_traditional_fit import decision_var
+
+_FULL_VEHICLE_BOUNDS = decision_var.full_vehicle().bounds
 
 
 class TestGenerateSeeds(unittest.TestCase):
@@ -44,13 +46,13 @@ class TestGenerateSeeds(unittest.TestCase):
 class TestSeedGenerators(unittest.TestCase):
 
     def test_multi_seed_generator_shape(self):
-        bounds = BemtModel.BOUNDS
+        bounds = _FULL_VEHICLE_BOUNDS
         sg = MultiSeedGenerator(n_lhs=8)
         seeds = sg.get_seeds(bounds)
         self.assertEqual(seeds.shape, (8, len(bounds)))
 
     def test_multi_seed_generator_bounds_respected(self):
-        bounds = BemtModel.BOUNDS
+        bounds = _FULL_VEHICLE_BOUNDS
         sg = MultiSeedGenerator(n_lhs=20, random_seed=7)
         seeds = sg.get_seeds(bounds)
         for col, (lo, hi) in enumerate(bounds):
@@ -60,7 +62,7 @@ class TestSeedGenerators(unittest.TestCase):
     def test_single_seed_generator_returns_one_row(self):
         guess = [5.3, 1.7, 1.8, np.radians(20.6), 0.0]
         sg = SingleSeedGenerator(guess)
-        seeds = sg.get_seeds(BemtModel.BOUNDS)
+        seeds = sg.get_seeds(_FULL_VEHICLE_BOUNDS)
         self.assertEqual(seeds.shape, (1, 5))
         np.testing.assert_array_almost_equal(seeds[0], guess)
 

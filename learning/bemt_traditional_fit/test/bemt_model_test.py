@@ -81,33 +81,32 @@ class TestConfigureForBodyDragFit(unittest.TestCase):
         )
         return BemtModel(APC_8x6(), parameters.PennStateARILab550(), model_config)
 
-    def test_bounds_becomes_one_dimensional(self):
+    def test_apply_params_applies_only_k_body_drag(self):
         model = self._make_model()
+        model.apply_params([5.0, 1.7, 1.8, np.radians(20.0), 0.0])  # full physical vector
         model.configure_for_body_drag_fit()
-        self.assertEqual(model.BOUNDS, [(0.0, 10.0)])
+        cl_1_before, cl_2_before = model.blade.cl_1, model.blade.cl_2
+        model.apply_params([3.3])  # body-drag-only: a single k_body_drag
+        self.assertAlmostEqual(model.k_body_drag, 3.3)
+        # blade aero coefficients are left frozen
+        self.assertAlmostEqual(model.blade.cl_1, cl_1_before)
+        self.assertAlmostEqual(model.blade.cl_2, cl_2_before)
 
-    def test_parameter_names_becomes_k_body_drag_only(self):
+    def test_full_vehicle_apply_params_still_sets_five(self):
         model = self._make_model()
-        model.configure_for_body_drag_fit()
-        self.assertEqual(model.PARAMETER_NAMES, ("k_body_drag",))
-
-    def test_class_level_bounds_unchanged(self):
-        original_class_bounds = BemtModel.BOUNDS
-        model = self._make_model()
-        model.configure_for_body_drag_fit()
-        self.assertIs(BemtModel.BOUNDS, original_class_bounds)
-
-    def test_class_level_parameter_names_unchanged(self):
-        original_names = BemtModel.PARAMETER_NAMES
-        model = self._make_model()
-        model.configure_for_body_drag_fit()
-        self.assertIs(BemtModel.PARAMETER_NAMES, original_names)
+        model.apply_params([5.0, 1.7, 1.8, np.radians(20.0), 2.5])
+        self.assertAlmostEqual(model.blade.cl_1, 5.0)
+        self.assertAlmostEqual(model.blade.alpha_0, np.radians(20.0))
+        self.assertAlmostEqual(model.k_body_drag, 2.5)
 
     def test_other_model_instance_unaffected(self):
         model_a = self._make_model()
         model_b = self._make_model()
         model_a.configure_for_body_drag_fit()
-        self.assertEqual(model_b.BOUNDS, BemtModel.BOUNDS)
+        # reconfiguring model_a's apply_params must not change model_b's
+        self.assertIsNot(model_a.apply_params, model_b.apply_params)
+        model_b.apply_params([5.0, 1.7, 1.8, np.radians(20.0), 2.5])  # full vector still works
+        self.assertAlmostEqual(model_b.k_body_drag, 2.5)
 
 
 if __name__ == "__main__":

@@ -33,6 +33,7 @@ def _make_mock_dataset(n: int, omega_val: float = 300.0,
     df_data["shared_r_disk"] = [np.eye(3).tolist() for _ in range(n)]
     df_data["sensed_dv"] = [np.zeros(3).tolist() for _ in range(n)]
     df_data["sensed_omega"] = [np.zeros(3).tolist() for _ in range(n)]
+    df_data["v"] = [np.zeros(3).tolist() for _ in range(n)]
     return data_factory.FittingDataset(pd.DataFrame(df_data), "mock")
 
 
@@ -106,30 +107,25 @@ class TestSingleRotorBemtModel(unittest.TestCase):
         residual = self.model.get_residual_force(dataset, 0)
         np.testing.assert_array_almost_equal(residual, np.zeros(3), decimal=5)
 
-    def test_bounds_match_parameter_names(self):
-        self.assertEqual(len(SingleRotorBemtModel.BOUNDS), 6)
-        self.assertEqual(len(SingleRotorBemtModel.PARAMETER_NAMES), 6)
-        self.assertEqual(
-            SingleRotorBemtModel.PARAMETER_NAMES,
-            ("cl_1", "cl_2", "cd", "alpha_0", "alpha_zero_lift", "alpha_d_min"),
-        )
+    def test_model_is_pure_physical_no_decision_var(self):
+        # The physics model must not carry the optimizer's search-space concern (step 3).
+        self.assertFalse(hasattr(self.model, "decision_var"))
+        self.assertFalse(hasattr(SingleRotorBemtModel, "BOUNDS"))
 
-    def test_apply_params_sets_new_aero_angles(self):
+    def test_apply_params_takes_physical_coefficients(self):
         model = SingleRotorBemtModel(APC_8x6(), is_ccw_rotor0=False, model_config=_CONFIG.model)
-        x = np.array([5.3, 1.7, 1.8, np.radians(20.6), np.radians(-2.0), np.radians(3.0)])
-        model.apply_params(x)
-        self.assertAlmostEqual(model.blade.alpha_zero_lift, np.radians(-2.0))
-        self.assertAlmostEqual(model.blade.alpha_d_min, np.radians(3.0))
+        cl_1, cl_2, cd = 5.3, 1.7, 1.8
+        alpha_0, azl, admin = np.radians(20.0), np.radians(-2.0), np.radians(3.0)
+        model.apply_params(np.array([cl_1, cl_2, cd, alpha_0, azl, admin]))
+        self.assertAlmostEqual(model.blade.cl_1, cl_1)
+        self.assertAlmostEqual(model.blade.cl_2, cl_2)
+        self.assertAlmostEqual(model.blade.alpha_0, alpha_0)
+        self.assertAlmostEqual(model.blade.alpha_zero_lift, azl)
+        self.assertAlmostEqual(model.blade.alpha_d_min, admin)
         # the coefficient object actually used by BET must reflect the new values
-        self.assertAlmostEqual(model.bet_instance.coeff.alpha_zero_lift, np.radians(-2.0))
-        self.assertAlmostEqual(model.bet_instance.coeff.alpha_d_min, np.radians(3.0))
-
-    def test_apply_params_backward_compatible_with_four(self):
-        model = SingleRotorBemtModel(APC_8x6(), is_ccw_rotor0=False, model_config=_CONFIG.model)
-        model.apply_params(np.array([5.3, 1.7, 1.8, np.radians(20.6)]))
-        # trailing params untouched -> remain at blade defaults
-        self.assertAlmostEqual(model.blade.alpha_zero_lift, 0.0)
-        self.assertAlmostEqual(model.blade.alpha_d_min, 0.0)
+        self.assertAlmostEqual(model.bet_instance.coeff.alpha_0, alpha_0)
+        self.assertAlmostEqual(model.bet_instance.coeff.alpha_zero_lift, azl)
+        self.assertAlmostEqual(model.bet_instance.coeff.alpha_d_min, admin)
 
     def test_sensed_wind_loaded_from_dataset(self):
         u_sensed = np.array([1.0, 0.5, -2.0])
@@ -148,6 +144,7 @@ class TestSingleRotorBemtModel(unittest.TestCase):
         df_data["shared_r_disk"] = [np.eye(3).tolist() for _ in range(n)]
         df_data["sensed_dv"] = [np.zeros(3).tolist() for _ in range(n)]
         df_data["sensed_omega"] = [np.zeros(3).tolist() for _ in range(n)]
+        df_data["v"] = [np.zeros(3).tolist() for _ in range(n)]
         dataset = data_factory.FittingDataset(pd.DataFrame(df_data), "mock")
         self.assertIsNone(dataset.rotor_0_sensed_wind_velocity)
 
@@ -162,13 +159,17 @@ class TestSingleRotorObjective(unittest.TestCase):
 
     def test_get_loss_returns_scalar(self):
         dataset = _make_mock_dataset(10, omega_val=200.0)
-        x = np.array([5.3, 1.7, 1.8, np.radians(20.6)])
+        # objective works in physical coefficients.
+        x = np.array([5.3, 1.7, 1.8, np.radians(20.6), np.radians(-2.0), np.radians(3.0)])
         loss = self.objective.get_loss(x, [dataset])
         self.assertIsInstance(loss, float)
         self.assertGreaterEqual(loss, 0.0)
 
     def test_get_loss_lower_when_sensor_matches_bet(self):
-        x = np.array([5.3, 1.7, 1.8, np.radians(20.6)])
+        # x is a physical coefficient vector; the matching model is set to the same values.
+        cl_1, cl_2, cd, alpha_0, azl, admin = (
+            5.3, 1.7, 1.8, np.radians(20.6), np.radians(-2.0), np.radians(3.0))
+        x = np.array([cl_1, cl_2, cd, alpha_0, azl, admin])
         u_sensed = np.array([0.0, 0.0, -2.0])
 
         dataset_zero = _make_mock_dataset(10, omega_val=200.0, sensed_wind=u_sensed)
@@ -176,8 +177,9 @@ class TestSingleRotorObjective(unittest.TestCase):
 
         dataset_match = _make_mock_dataset(10, omega_val=200.0, sensed_wind=u_sensed)
         model_tmp = SingleRotorBemtModel(APC_8x6(), is_ccw_rotor0=False, model_config=_CONFIG.model)
-        model_tmp.blade.cl_1, model_tmp.blade.cl_2 = 5.3, 1.7
-        model_tmp.blade.cd, model_tmp.blade.alpha_0 = 1.8, np.radians(20.6)
+        model_tmp.blade.cl_1, model_tmp.blade.cl_2 = cl_1, cl_2
+        model_tmp.blade.cd, model_tmp.blade.alpha_0 = cd, alpha_0
+        model_tmp.blade.alpha_zero_lift, model_tmp.blade.alpha_d_min = azl, admin
         model_tmp.bet_instance.refresh_blade()
         for i in range(10):
             f_bet = model_tmp.compute_rotor0_thrust(

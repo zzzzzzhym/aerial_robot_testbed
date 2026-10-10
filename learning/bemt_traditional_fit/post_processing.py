@@ -10,12 +10,12 @@ from learning.bemt_traditional_fit.per_condition_result import PerConditionResul
 
 
 def make_lookup_table(fitted_params, blade: inflow_model.blade_params.Blade, table_name: str, is_hover_only: bool = False):
-    """Write a lookup table YAML from the fitted aero parameters.
+    """Write a lookup table YAML from the fitted (physical) aero parameters.
 
     The first four entries are (cl_1, cl_2, cd, alpha_0).  A single-rotor fit also
-    supplies alpha_zero_lift and alpha_d_min at indices 4 and 5, which are applied
-    when present (len >= 6).  A full-vehicle fit instead has k_body_drag at index 4
-    (len == 5); that trailing parameter is ignored here.
+    supplies alpha_zero_lift and alpha_d_min at indices 4 and 5 (len >= 6).  A
+    full-vehicle fit instead has k_body_drag at index 4 (len == 5); that trailing
+    parameter is ignored here.
     """
     blade.cl_1, blade.cl_2, blade.cd, blade.alpha_0 = fitted_params[:4]
     if len(fitted_params) >= 6:

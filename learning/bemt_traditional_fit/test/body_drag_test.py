@@ -106,14 +106,14 @@ class TestFittingManagerForBodyDrag(unittest.TestCase):
             self.blade, self.params, self.datasets,
             self.lookup_table, self.fixed_aero_params,
         )
-        self.assertEqual(manager.model.BOUNDS, [(0.0, 10.0)])
+        self.assertEqual(manager.engine.decision_var.bounds, [(0.0, 10.0)])
 
     def test_model_has_k_body_drag_parameter_name(self):
         manager = FittingManager.for_body_drag(
             self.blade, self.params, self.datasets,
             self.lookup_table, self.fixed_aero_params,
         )
-        self.assertEqual(manager.model.PARAMETER_NAMES, ("k_body_drag",))
+        self.assertEqual(manager.engine.decision_var.search_names, ("k_body_drag",))
 
     def test_fixed_aero_params_applied_to_blade(self):
         cl_1, cl_2, cd, alpha_0 = self.fixed_aero_params

@@ -8,17 +8,10 @@ from learning.bemt_traditional_fit.fitting_config import ModelConfig
 
 
 class BemtModel:
-    """Physics model: encapsulates blade geometry, BEMT solver, and drone parameters."""
+    """Physics model: encapsulates blade geometry, BEMT solver, and drone parameters.
 
-    PARAMETER_NAMES = ("cl_1", "cl_2", "cd", "alpha_0", "k_body_drag")
-
-    BOUNDS = [
-        (2.0, 50.0),                           # cl_1
-        (0.0, 50.0),                           # cl_2
-        (0.0, 5.0),                            # cd
-        (np.radians(10), np.radians(40)),      # alpha_0
-        (0.0, 10.0),                           # k_body_drag
-    ]
+    Pure physics: ``apply_params`` takes physical coefficients.
+    """
 
     def __init__(self, blade, params, model_config: ModelConfig):
         self.blade = blade
@@ -243,12 +236,9 @@ class BemtModel:
     def configure_for_body_drag_fit(self):
         """Switch this model instance to 1-D body-drag-only fitting mode.
 
-        Overrides BOUNDS, PARAMETER_NAMES, and apply_params at the instance level so that
-        the solver and engine treat k_body_drag as the sole decision variable.
-        Call this after fixing blade aero coefficients from a prior single-rotor fit.
+        Swaps apply_params so that only k_body_drag is applied (blade aero frozen from a
+        prior single-rotor fit).
         """
-        self.BOUNDS = [(0.0, 10.0)]
-        self.PARAMETER_NAMES = ("k_body_drag",)
         self.apply_params = self._apply_params_body_drag_only
 
     def compute_ground_truth(self, dataset):

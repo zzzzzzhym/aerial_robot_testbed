@@ -15,12 +15,13 @@ from learning.bemt_traditional_fit.fit_plotter import FitPlotter
 from learning.bemt_traditional_fit.fitting_engine import FittingEngine
 from learning.bemt_traditional_fit.seed_generator import MultiSeedGenerator, SingleSeedGenerator
 from learning.bemt_traditional_fit.solver import Solver
+from learning.bemt_traditional_fit import decision_var as dv
 
 _CONFIG_DIR = Path(__file__).parent
 
 
-def _build_engine(model, objective, config: FittingConfig) -> FittingEngine:
-    bounds = model.BOUNDS
+def _build_engine(model, objective, decision_var, config: FittingConfig) -> FittingEngine:
+    bounds = decision_var.bounds
     sc = config.seed
     sv = config.solver
     seed_gen = MultiSeedGenerator(n_lhs=sc.n_lhs, n_keep=sc.n_keep, random_seed=sc.random_seed)
@@ -28,7 +29,7 @@ def _build_engine(model, objective, config: FittingConfig) -> FittingEngine:
     fine_solver = Solver(bounds, maxiter=sv.fine_maxiter, options={'ftol': sv.ftol, 'xtol': sv.xtol, 'disp': True})
     single_solver = Solver(bounds, maxiter=sv.single_maxiter, options={'disp': True, 'fatol': 1e-1})
     single_fine_solver = Solver(bounds, maxiter=sv.single_fine_maxiter, options={'disp': True, 'fatol': 1e-1})
-    return FittingEngine(model, objective, seed_gen, coarse_solver, fine_solver, single_solver, single_fine_solver)
+    return FittingEngine(model, objective, decision_var, seed_gen, coarse_solver, fine_solver, single_solver, single_fine_solver)
 
 
 class FittingManager:
@@ -55,7 +56,7 @@ class FittingManager:
         config = config or FittingConfig.from_yaml(_CONFIG_DIR / "config_full_vehicle.yaml")
         model = BemtModel(blade, params, model_config=config.model)
         objective = FittingObjective(model)
-        engine = _build_engine(model, objective, config)
+        engine = _build_engine(model, objective, dv.full_vehicle(), config)
         return cls(model, engine, datasets, init_guess)
 
     @classmethod
@@ -82,7 +83,7 @@ class FittingManager:
         model.bet_instance.refresh_blade()
         model.configure_for_body_drag_fit()
         objective = BodyDragObjective(model, lookup_table)
-        engine = _build_engine(model, objective, config)
+        engine = _build_engine(model, objective, dv.body_drag(), config)
         return cls(model, engine, datasets, init_guess)
 
     @classmethod
@@ -93,7 +94,7 @@ class FittingManager:
         config = config or FittingConfig.from_yaml(_CONFIG_DIR / "config_single_rotor.yaml")
         model = SingleRotorBemtModel(blade, is_ccw_rotor0, model_config=config.model)
         objective = SingleRotorObjective(model)
-        engine = _build_engine(model, objective, config)
+        engine = _build_engine(model, objective, dv.OffsetAugmentedAeroCoeffDecisionVar(), config)
         return cls(model, engine, datasets, init_guess)
 
     @classmethod
@@ -128,7 +129,7 @@ class FittingManager:
         model = SingleRotorBemtModel(blade, is_ccw_rotor0, model_config=config.model)
         model.use_bemt = True
         objective = SingleRotorObjective(model)
-        engine = _build_engine(model, objective, config)
+        engine = _build_engine(model, objective, dv.OffsetAugmentedAeroCoeffDecisionVar(), config)
         return cls(model, engine, datasets, init_guess)
 
     def run(self, is_multiseed: bool = True, is_fine_tune: bool = False):
