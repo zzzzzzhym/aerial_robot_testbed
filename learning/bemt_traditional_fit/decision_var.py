@@ -39,15 +39,27 @@ class DecisionVar:
         hi = np.array([b[1] for b in self.bounds])
         return np.clip(np.asarray(x, dtype=float), lo, hi)
 
-    def format(self, values):
-        """Format a search-space vector for display, always in physical coefficients."""
+    def _format_named(self, names, vec):
         parts = []
-        for name, value in zip(self.physical_names, self.to_physical(values)):
+        for name, value in zip(names, vec):
             if name in self.angle_params:
                 parts.append(f"{name}={np.degrees(value):.3f}deg")
             else:
                 parts.append(f"{name}={value:.3f}")
         return "  ".join(parts)
+
+    def format(self, values):
+        """Format a search-space vector for display.
+
+        Identity modes print a single line (the search vars are the physical coeffs).
+        Reparameterized modes show the physical coefficients plus the raw decision
+        variables alongside them.
+        """
+        decision_str = self._format_named(self.search_names, np.asarray(values, dtype=float))
+        if self.search_names == self.physical_names:
+            return decision_str
+        physical_str = self._format_named(self.physical_names, self.to_physical(values))
+        return f"{physical_str}  [decision: {decision_str}]"
 
 
 _OFFSET_AUGMENTED_AERO_COEFF_BOUNDS = [
@@ -76,7 +88,7 @@ class OffsetAugmentedAeroCoeffDecisionVar(DecisionVar):
             search_names=("cl_1", "k_cl_2", "cd", "delta_alpha", "alpha_zero_lift", "alpha_d_min"),
             physical_names=("cl_1", "cl_2", "cd", "alpha_0", "alpha_zero_lift", "alpha_d_min"),
             bounds=_OFFSET_AUGMENTED_AERO_COEFF_BOUNDS,
-            angle_params=("alpha_0", "alpha_zero_lift", "alpha_d_min"),
+            angle_params=("alpha_0", "delta_alpha", "alpha_zero_lift", "alpha_d_min"),
         )
 
     def to_physical(self, x):

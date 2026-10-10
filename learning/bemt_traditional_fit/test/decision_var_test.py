@@ -54,6 +54,17 @@ class TestOffsetAugmentedAeroCoeffDecisionVar(unittest.TestCase):
         self.assertEqual(self.dv.search_names,
                          ("cl_1", "k_cl_2", "cd", "delta_alpha", "alpha_zero_lift", "alpha_d_min"))
 
+    def test_format_shows_both_physical_and_decision(self):
+        # search vector: cl_1, k_cl_2, cd, delta_alpha, alpha_zero_lift, alpha_d_min
+        s = self.dv.format([7.0, 0.4, 1.5, np.radians(12.0), np.radians(-3.0), np.radians(4.0)])
+        # physical coefficients (alpha_0 = alpha_zero_lift + delta_alpha = -3 + 12 = 9 deg)
+        self.assertIn("cl_2=", s)
+        self.assertIn("alpha_0=9.000deg", s)
+        # decision variables alongside
+        self.assertIn("[decision:", s)
+        self.assertIn("k_cl_2=0.400", s)
+        self.assertIn("delta_alpha=12.000deg", s)
+
     def test_k_cl_2_bounds_are_zero_to_099(self):
         self.assertEqual(self.dv.bounds[1], (0.0, 0.99))
 
