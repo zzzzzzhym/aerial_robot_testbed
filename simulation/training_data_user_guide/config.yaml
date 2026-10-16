@@ -63,7 +63,7 @@ configs:
       z: [-4.0, -1.0, 1.0, 4.0]
 
   fitting:
-    t_data_collection: 15.0
+    t_data_collection: 12.0
     file_name_template: "test_wind_near_wall_x{}_y{}_z{}_d{}_fitting"
     wall_distance_range: [100.0]   # treat as no wall
     is_csv: true
@@ -72,7 +72,7 @@ configs:
       args: [200, false]
     wind_conditions:
       style: polar
-      magnitudes: [3.0, 5.0]
+      magnitudes: [1.0, 3.0, 5.0]
       pitch_angles_deg: [0.0, 30.0, -30.0, 60.0, -60.0, 90.0, -90.0]
 
   fitting_validation:
