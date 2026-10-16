@@ -71,5 +71,43 @@ class TestBemtModelMath(unittest.TestCase):
         self.assertLess(residual[2], 0.0)
 
 
+class TestConfigureForBodyDragFit(unittest.TestCase):
+
+    def _make_model(self):
+        from learning.bemt_traditional_fit.fitting_config import ModelConfig
+        model_config = ModelConfig(
+            coarse_n_elements=2, coarse_n_rotation_segments=6, coarse_sample_distance=100,
+            fine_n_elements=20, fine_n_rotation_segments=18, fine_sample_distance=20,
+        )
+        return BemtModel(APC_8x6(), parameters.PennStateARILab550(), model_config)
+
+    def test_apply_params_applies_only_k_body_drag(self):
+        model = self._make_model()
+        model.apply_params([5.0, 1.7, 1.8, np.radians(20.0), 0.0])  # full physical vector
+        model.configure_for_body_drag_fit()
+        cl_1_before, cl_2_before = model.blade.aero_coeff.cl_1, model.blade.aero_coeff.cl_2
+        model.apply_params([3.3])  # body-drag-only: a single k_body_drag
+        self.assertAlmostEqual(model.k_body_drag, 3.3)
+        # blade aero coefficients are left frozen
+        self.assertAlmostEqual(model.blade.aero_coeff.cl_1, cl_1_before)
+        self.assertAlmostEqual(model.blade.aero_coeff.cl_2, cl_2_before)
+
+    def test_full_vehicle_apply_params_still_sets_five(self):
+        model = self._make_model()
+        model.apply_params([5.0, 1.7, 1.8, np.radians(20.0), 2.5])
+        self.assertAlmostEqual(model.blade.aero_coeff.cl_1, 5.0)
+        self.assertAlmostEqual(model.blade.aero_coeff.alpha_0, np.radians(20.0))
+        self.assertAlmostEqual(model.k_body_drag, 2.5)
+
+    def test_other_model_instance_unaffected(self):
+        model_a = self._make_model()
+        model_b = self._make_model()
+        model_a.configure_for_body_drag_fit()
+        # reconfiguring model_a's apply_params must not change model_b's
+        self.assertIsNot(model_a.apply_params, model_b.apply_params)
+        model_b.apply_params([5.0, 1.7, 1.8, np.radians(20.0), 2.5])  # full vector still works
+        self.assertAlmostEqual(model_b.k_body_drag, 2.5)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -183,7 +183,15 @@ class DroneDynamics(simulation.scenario.Dynamics):
         return output
 
     def get_extended_world_perception(self):
-        return simulation.interface.ExtendedWorldPerception(np.zeros(3), np.zeros(3))  # supposed to be contact force
+        contact_force = np.zeros(3)
+        tip_position = np.zeros(3)
+        if hasattr(self.disturbance, 'wall_contact'):
+            contact_force = self.disturbance.wall_contact.f_contact_normal
+            tip_position = self.disturbance.wall_contact.tip_position_inertial_frame
+        elif hasattr(self.disturbance, 'f_contact_normal'):
+            contact_force = self.disturbance.f_contact_normal
+            tip_position = self.disturbance.tip_position_inertial_frame
+        return simulation.interface.ExtendedWorldPerception(contact_force, tip_position)
 
     def shutdown(self):
         pass

@@ -14,4 +14,5 @@ def _make_mock_df(n: int) -> pd.DataFrame:
     data["shared_r_disk"] = [np.eye(3).tolist() for _ in range(n)]
     data["sensed_dv"] = [rng.standard_normal(3).tolist() for _ in range(n)]
     data["sensed_omega"] = [rng.standard_normal(3).tolist() for _ in range(n)]
+    data["v"] = [rng.standard_normal(3).tolist() for _ in range(n)]
     return pd.DataFrame(data)

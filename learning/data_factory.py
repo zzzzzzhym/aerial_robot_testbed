@@ -164,6 +164,8 @@ class FittingDataset:
 
         self.f_residual = None
 
+        self.v_body = np.array(df["v"].to_list())
+
         # Optional: sensed wind (background + induced velocity) at each rotor, in inertial frame.
         # Present in datasets recorded after this field was added to the logger.
         if "rotor_0_sensed_wind_velocity" in df.columns:

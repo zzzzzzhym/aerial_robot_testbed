@@ -504,6 +504,8 @@ class Plotter:
         axs1[2, 8].plot(self.t_span, logger["pose_desired_dot2"][:, 2, 2], marker='x', label="pose_desired_dot2[2, 2]")
 
     def plot_disturbance_force(self, logger: np.ndarray):
+        if "f_disturb" not in logger or logger["f_disturb"].size == 0:
+            return
         fig, axs = plt.subplots(4, 2, sharex=True)
         fig.suptitle('disturbance')
         f_norm = np.sqrt(
@@ -619,22 +621,22 @@ class Plotter:
         force_line_width = [line_width_base + (4-i) * line_width_gap for i in range(4)]
         for i in range(4):
             axs[0].plot(
-                self.t_span, 
-                logger["f_motor_desired"][:, i], 
-                label=f"Rotor {i} desired thrust", 
-                linestyle='-', 
-                linewidth=force_line_width[i], 
-                color=force_colors[i], 
-                zorder=3+i  # ensure later lines go on top
+                self.t_span,
+                logger["f_motor_desired"][:, i],
+                label=f"Rotor {i} desired thrust",
+                linestyle='--',
+                linewidth=force_line_width[i],
+                color=force_colors[i],
+                zorder=3+i
             )
             axs[0].plot(
-                self.t_span, 
-                logger[f"rotor_{i}_thrust"], 
-                label=f"Rotor {i} actual thrust", 
-                linestyle='--', 
-                linewidth=force_line_width[i], 
-                color=force_colors[i], 
-                zorder=3+i  # ensure later lines go on top
+                self.t_span,
+                logger[f"rotor_{i}_thrust"],
+                label=f"Rotor {i} actual thrust",
+                linestyle='-',
+                linewidth=force_line_width[i],
+                color=force_colors[i],
+                zorder=3+i
             )
         axs[0].set_ylabel("Rotor Forces")
         axs[0].legend(loc='upper right')
@@ -642,35 +644,55 @@ class Plotter:
         # === Rotor Speed Plot ===
         speed_colors = force_colors
         speed_line_width = force_line_width
-        delay_styles = ['--', '--', '--', '--']  # dashed for delayed
         for i in range(4):
             axs[1].plot(
-                self.t_span, 
-                logger[f"rotor_{i}_rotation_spd"], 
-                label=f"Rotor {i} Speed", 
-                color=speed_colors[i], 
-                linestyle='-', 
-                linewidth=speed_line_width[i], 
+                self.t_span,
+                logger[f"rotor_{i}_rotation_spd"],
+                label=f"Rotor {i} Speed",
+                color=speed_colors[i],
+                linestyle='-',
+                linewidth=speed_line_width[i],
                 zorder=3*i
             )
+            if f"rotor_{i}_rotation_spd_delayed" in logger and logger[f"rotor_{i}_rotation_spd_delayed"].size > 0:
+                axs[1].plot(
+                    self.t_span,
+                    logger[f"rotor_{i}_rotation_spd_delayed"],
+                    label=f"Rotor {i} Speed delayed",
+                    color=speed_colors[i],
+                    linestyle=':',
+                    linewidth=speed_line_width[i],
+                    zorder=3*i + 1
+                )
             axs[1].plot(
-                self.t_span, 
-                logger[f"rotor_{i}_rotation_spd_delayed"], 
-                label=f"Rotor {i} Speed delayed", 
-                color=speed_colors[i], 
-                linestyle=delay_styles[i], 
-                linewidth=speed_line_width[i], 
-                zorder=3*i + 1
-            )
-            axs[1].plot(
-                self.t_span, 
-                logger[f"rotor_speeds_desired"][:, i], 
-                label=f"Desired Rotor {i} Speed", 
-                color=speed_colors[i], 
-                linestyle=delay_styles[i], 
-                linewidth=speed_line_width[i], 
+                self.t_span,
+                logger[f"rotor_speeds_desired"][:, i],
+                label=f"Desired Rotor {i} Speed",
+                color=speed_colors[i],
+                linestyle='--',
+                linewidth=speed_line_width[i],
                 zorder=3*i + 2
             )
+            if "rotor_speeds_desired_with_inflow" in logger and logger["rotor_speeds_desired_with_inflow"].size > 0:
+                axs[1].plot(
+                    self.t_span,
+                    logger["rotor_speeds_desired_with_inflow"][:, i],
+                    label=f"Desired Rotor {i} Speed (with inflow)",
+                    color=speed_colors[i],
+                    linestyle='-.',
+                    linewidth=speed_line_width[i] * 0.6,
+                    zorder=3*i + 3
+                )
+            if "rotor_speeds_desired_no_inflow" in logger and logger["rotor_speeds_desired_no_inflow"].size > 0:
+                axs[1].plot(
+                    self.t_span,
+                    logger["rotor_speeds_desired_no_inflow"][:, i],
+                    label=f"Desired Rotor {i} Speed (no inflow)",
+                    color=speed_colors[i],
+                    linestyle=':',
+                    linewidth=speed_line_width[i] * 0.6,
+                    zorder=3*i + 4
+                )
 
         axs[1].set_ylabel("Rotor Speed [RPM]")
         axs[1].legend(loc='upper right')
@@ -737,6 +759,8 @@ class Plotter:
         axs9.axis('equal')
 
     def plot_2d_xz_yz_trace(self, logger: np.ndarray, wall_x: float = 0.0, is_figure8=True):
+        if "tip_position" not in logger or logger["tip_position"].size == 0 or "f_contact_normal" not in logger or logger["f_contact_normal"].size == 0:
+            return
 
         plt.rcParams["font.family"] = "serif"
         plt.rcParams["font.serif"] = ["Times New Roman"]
@@ -794,6 +818,8 @@ class Plotter:
         ax1.set_aspect('equal', adjustable='box')
 
     def plot_contact_force(self, logger: np.ndarray):
+        if "f_contact_normal" not in logger or logger["f_contact_normal"].size == 0:
+            return
         f = logger["f_contact_normal"]
         f_mag = np.linalg.norm(f, axis=1)
 
@@ -849,6 +875,102 @@ class Plotter:
         axs10.set_ylabel('Y')
         axs10.set_zlabel('Z')
         axs10.axis('equal')
+
+    def print_wind_at_time(self, logger: np.ndarray, t: float, lookup_table=None, is_ccw_blade=None):
+        """Print per-rotor wind breakdown at the given time, all vectors in disk/body frame.
+
+        Args:
+            lookup_table: optional PropellerLookupTable.Reader — if provided, also prints v_i
+            is_ccw_blade: list of 4 bools required when lookup_table is provided
+        """
+        idx = int(t / self.dt)
+        idx = np.clip(idx, 0, len(self.t_span) - 1)
+        actual_t = self.t_span[idx]
+        r_disk = logger["shared_r_disk"][idx]
+        print(f"t = {actual_t:.3f} s  (idx = {idx})")
+        for i in range(4):
+            key_sensed = f"rotor_{i}_sensed_wind_velocity"
+            key_bg = f"rotor_{i}_local_wind_velocity"
+            if key_sensed not in logger or key_bg not in logger:
+                print(f"  Rotor {i}: wind data not logged")
+                continue
+            sensed  = r_disk.T @ logger[key_sensed][idx]
+            bg      = r_disk.T @ logger[key_bg][idx]
+            rotor_v = r_disk.T @ logger[f"rotor_{i}_velocity"][idx]
+            def _fv(v):
+                return f"[{v[0]:+.3f}, {v[1]:+.3f}, {v[2]:+.3f}] m/s"
+            print(f"  Rotor {i}:")
+            print(f"    sensed wind (disk):        {_fv(sensed)}")
+            print(f"    background wind (body):    {_fv(bg)}")
+            print(f"    rotor velocity (body):     {_fv(rotor_v)}")
+            if lookup_table is not None and is_ccw_blade is not None:
+                omega   = logger[f"rotor_{i}_rotation_spd"][idx]
+                background_wind_inertial = logger[key_bg][idx]
+                rotor_velocity_inertial = logger[f"rotor_{i}_velocity"][idx]
+                _, v_i_inertial = lookup_table.get_rotor_forces(
+                    background_wind_inertial, rotor_velocity_inertial, r_disk, omega, is_ccw_blade[i]
+                )
+                v_i_scalar = np.dot(r_disk[:, 2], -v_i_inertial)
+                print(f"    v_i from lookup table:     {v_i_scalar:+.3f} m/s (downwash)")
+
+    def print_rotor_forces_at_time(self, logger: np.ndarray, t: float, lookup_table, is_ccw_blade: list, bet_model=None):
+        """Print per-rotor force comparison at the given time.
+
+        Columns printed per rotor:
+            rotational speed, measured force, lookup-table force (with/without background wind),
+            and BET integrated force (if bet_model is provided).
+
+        Args:
+            lookup_table: PropellerLookupTable.Reader instance
+            is_ccw_blade: list of 4 bools, one per rotor
+            bet_model: optional SingleRotorBemtModel with fitted blade params
+        """
+        idx = int(t / self.dt)
+        idx = np.clip(idx, 0, len(self.t_span) - 1)
+        actual_t = self.t_span[idx]
+        r_disk = logger["shared_r_disk"][idx]
+
+        def _fmt(f_inertial):
+            thrust = (r_disk.T @ f_inertial)[2]
+            return (f"[{f_inertial[0]:+.3f}, {f_inertial[1]:+.3f}, {f_inertial[2]:+.3f}] N"
+                    f"  thrust={thrust:+.3f}")
+
+        print(f"t = {actual_t:.3f} s  (idx = {idx})")
+        active_rotors_id = [0, 1, 2, 3]
+        for i in active_rotors_id:
+            omega    = logger[f"rotor_{i}_rotation_spd"][idx]
+            v_fwd    = logger[f"rotor_{i}_velocity"][idx]
+            u_free   = logger[f"rotor_{i}_local_wind_velocity"][idx]
+            f_meas   = logger[f"rotor_{i}_f_rotor_inertial_frame"][idx]
+            is_ccw   = is_ccw_blade[i]
+
+            f_wind, _    = lookup_table.get_rotor_forces(u_free,        v_fwd, r_disk, omega, is_ccw)
+            f_no_wind, _ = lookup_table.get_rotor_forces(np.zeros(3),   v_fwd, r_disk, omega, is_ccw)
+
+            print(f"  Rotor {i} (ccw={is_ccw}, omega={omega:.1f} rad/s):")
+            print(f"    measured:           {_fmt(f_meas)}")
+            print(f"    table (with wind):  {_fmt(f_wind)}")
+            print(f"    table (no wind):    {_fmt(f_no_wind)}")
+
+            # Controller replication: omega the controller would command to hit the
+            # desired motor thrust, with background wind (inflow model) vs assuming no
+            # wind (no-inflow path zeros both u_free and v_forward, as in controller.py).
+            thrust_desired = logger["f_motor_desired"][idx][i]
+            omega_cmd_wind    = lookup_table.get_rotation_speed(u_free,      v_fwd,       r_disk, omega, thrust_desired)
+            omega_cmd_no_wind = lookup_table.get_rotation_speed(np.zeros(3), np.zeros(3), r_disk, omega, thrust_desired)
+            print(f"    cmd omega (thrust_des={thrust_desired:+.3f} N):  "
+                  f"with wind={omega_cmd_wind:.1f}  no wind={omega_cmd_no_wind:.1f} rad/s")
+
+            if bet_model is not None:
+                key = f"rotor_{i}_sensed_wind_velocity"
+                if key in logger:
+                    u_sensed = logger[key][idx]
+                    omega_signed = omega if is_ccw else -omega
+                    f_bet_disk = bet_model.bet_instance.integrate_element_force(
+                        u_sensed, 0.0, np.zeros(3), r_disk, omega_signed, is_ccw_blade=is_ccw
+                    )
+                    f_bet = r_disk @ f_bet_disk
+                    print(f"    BET (sensed wind):  {_fmt(f_bet)}")
 
     def plot_pose_in_given_time(self, logger: np.ndarray, t: float):
         idx = int(t/self.dt)

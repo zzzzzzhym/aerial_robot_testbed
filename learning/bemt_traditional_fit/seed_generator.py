@@ -26,10 +26,11 @@ class SeedGenerator(ABC):
 class MultiSeedGenerator(SeedGenerator):
     """LHS-based multi-start seed generator."""
 
-    def __init__(self, n_lhs=128, physical_seed=None, random_seed=42):
+    def __init__(self, n_lhs, n_keep, random_seed, physical_seed=None):
         self.n_lhs = n_lhs
-        self.physical_seed = physical_seed
+        self.n_keep = n_keep
         self.random_seed = random_seed
+        self.physical_seed = physical_seed
 
     def get_seeds(self, bounds) -> np.ndarray:
         return generate_seeds(bounds, self.n_lhs, self.physical_seed, self.random_seed)

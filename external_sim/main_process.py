@@ -80,6 +80,7 @@ class P600(simulation.scenario.Dynamics):
             tip_position=np.zeros(3),
         )
         self.i = 0
+        self._log_data = {"throttle_level": None}
 
         self.main_api.start()
 
@@ -145,6 +146,12 @@ class P600(simulation.scenario.Dynamics):
         else:
             self.main_api.set_object_property_float(wall, 'position.x', wall_offset)
 
+    def _log(self, name: str, value) -> None:
+        self._log_data[name] = value.copy() if hasattr(value, 'copy') else value
+
+    def get_log_data(self) -> dict:
+        return self._log_data
+
     def filter_motor_speed(self, speeds: np.ndarray) -> np.ndarray:
         # clip first (physical limits)
         speeds = np.clip(speeds, 50, 550)
@@ -193,6 +200,7 @@ class P600(simulation.scenario.Dynamics):
         # k = 0.5
         # throttles = [k, k, k, k]
         print("throttle level: ", throttles)
+        self._log("throttle_level", throttles)
         return {
             setter: throttle
             for setter, throttle in zip(self.motor_throttle_setters, throttles)
@@ -241,10 +249,9 @@ class P600(simulation.scenario.Dynamics):
 
         self.rotors.step_all_rotor_states(body_state, rotation_speed)
         for flow_speed, rotor in zip(flow_speeds, self.rotors.rotors):
-            rotor.local_wind_velocity = self.background_wind_reader.get_velocity_at(rotor.position_inertial_frame)
-            print("rotor.local_wind_velocity", rotor.local_wind_velocity) # debug
+            rotor.set_local_wind_velocity(self.background_wind_reader.get_velocity_at(rotor.position_inertial_frame), frame='inertial')
             # rotor.local_wind_velocity = np.array(flow_speed)  # somehow only this one works
-            rotor.sensed_wind_velocity = np.array(flow_speed)
+            rotor.set_sensed_wind_velocity(np.array(flow_speed), frame='body')
         for f_body, rotor in zip(rotor_forces_body_frame, self.rotors.rotors):
             rotor.set_force_from_body_frame(f_body)
 
@@ -260,7 +267,7 @@ class P600(simulation.scenario.Dynamics):
 
     def save_extended_world_perception(self, reply):
         self.contact_force = simulation.interface.ExtendedWorldPerception(
-            contact_force=self.get_end_effector_force(reply),
+            contact_force=self.state.pose @ self.get_end_effector_force(reply),
             tip_position=self.state.get_position_in("inertial"))    # temporary solution, should change back to tip
 
     def get_dynamics_output(self) -> simulation.interface.DynamicsOutput:

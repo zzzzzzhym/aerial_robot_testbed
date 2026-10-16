@@ -1,13 +1,35 @@
+from pathlib import Path
 import numpy as np
 
 import data_factory
 from learning.bemt_traditional_fit.bemt_model import BemtModel
+from learning.bemt_traditional_fit.fitting_config import FittingConfig
 from learning.bemt_traditional_fit.objective import FittingObjective
 from learning.bemt_traditional_fit.single_rotor_model import SingleRotorBemtModel
 from learning.bemt_traditional_fit.single_rotor_objective import SingleRotorObjective
+from learning.bemt_traditional_fit.body_drag_objective import BodyDragObjective
+from learning.bemt_traditional_fit.quadratic_rotor_model import QuadraticRotorModel
+from learning.bemt_traditional_fit.quadratic_fitting_engine import QuadraticFittingEngine
+from learning.bemt_traditional_fit.per_condition_result import PerConditionResult
 from learning.bemt_traditional_fit.fit_plotter import FitPlotter
 from learning.bemt_traditional_fit.fitting_engine import FittingEngine
-from learning.bemt_traditional_fit.seed_generator import SingleSeedGenerator
+from learning.bemt_traditional_fit.seed_generator import MultiSeedGenerator, SingleSeedGenerator
+from learning.bemt_traditional_fit.solver import Solver
+from learning.bemt_traditional_fit import decision_var as dv
+
+_CONFIG_DIR = Path(__file__).parent
+
+
+def _build_engine(model, objective, decision_var, config: FittingConfig) -> FittingEngine:
+    bounds = decision_var.bounds
+    sc = config.seed
+    sv = config.solver
+    seed_gen = MultiSeedGenerator(n_lhs=sc.n_lhs, n_keep=sc.n_keep, random_seed=sc.random_seed)
+    coarse_solver = Solver(bounds, maxiter=sv.coarse_maxiter, options={'ftol': sv.ftol, 'xtol': sv.xtol, 'disp': True})
+    fine_solver = Solver(bounds, maxiter=sv.fine_maxiter, options={'ftol': sv.ftol, 'xtol': sv.xtol, 'disp': True})
+    single_solver = Solver(bounds, maxiter=sv.single_maxiter, options={'disp': True, 'fatol': 1e-1})
+    single_fine_solver = Solver(bounds, maxiter=sv.single_fine_maxiter, options={'disp': True, 'fatol': 1e-1})
+    return FittingEngine(model, objective, decision_var, seed_gen, coarse_solver, fine_solver, single_solver, single_fine_solver)
 
 
 class FittingManager:
@@ -18,30 +40,112 @@ class FittingManager:
         FittingManager.for_single_rotor(blade, is_ccw_rotor0, datasets)
     """
 
-    def __init__(self, model, objective, datasets: list[data_factory.FittingDataset],
+    def __init__(self, model, engine, datasets: list[data_factory.FittingDataset],
                  init_guess=None):
         self.model = model
+        self.engine = engine
         self.datasets = datasets
         self.init_guess = (
             np.asarray(init_guess, dtype=float) if init_guess is not None else None
         )
-        self.engine = FittingEngine(model, objective)
 
     @classmethod
     def for_full_vehicle(cls, blade, params, datasets: list[data_factory.FittingDataset],
-                         init_guess=None):
+                         init_guess=None, config: FittingConfig = None):
         """Full four-rotor vehicle fitting. Fits cl_1, cl_2, cd, alpha_0, k_body_drag."""
-        model = BemtModel(blade, params)
+        config = config or FittingConfig.from_yaml(_CONFIG_DIR / "config_full_vehicle.yaml")
+        model = BemtModel(blade, params, model_config=config.model)
         objective = FittingObjective(model)
-        return cls(model, objective, datasets, init_guess)
+        engine = _build_engine(model, objective, dv.full_vehicle(), config)
+        return cls(model, engine, datasets, init_guess)
+
+    @classmethod
+    def for_body_drag(cls, blade, params, datasets: list[data_factory.FittingDataset],
+                      lookup_table, fixed_aero_params,
+                      init_guess=None, config: FittingConfig = None):
+        """Body-drag-only fitting given a fixed propeller map.
+
+        Aero coefficients (cl_1, cl_2, cd, alpha_0) are frozen via fixed_aero_params;
+        only k_body_drag is optimized. Thrust is computed via lookup_table.
+
+        Args:
+            fixed_aero_params: sequence (cl_1, cl_2, cd, alpha_0) from a prior single-rotor fit.
+            lookup_table: prepared PropellerLookupTable.Reader for thrust computation.
+            init_guess: optional initial k_body_drag scalar or 1-element array.
+        """
+        config = config or FittingConfig.from_yaml(_CONFIG_DIR / "config_body_drag.yaml")
+        model = BemtModel(blade, params, model_config=config.model)
+        cl_1, cl_2, cd, alpha_0 = fixed_aero_params
+        model.blade.aero_coeff.update_fit_params(cl_1, cl_2, cd, alpha_0)
+        model.configure_for_body_drag_fit()
+        objective = BodyDragObjective(model, lookup_table)
+        engine = _build_engine(model, objective, dv.body_drag(), config)
+        return cls(model, engine, datasets, init_guess)
 
     @classmethod
     def for_single_rotor(cls, blade, is_ccw_rotor0: bool,
-                         datasets: list[data_factory.FittingDataset], init_guess=None):
+                         datasets: list[data_factory.FittingDataset], init_guess=None,
+                         config: FittingConfig = None):
         """Single-rotor test-stand fitting. Fits cl_1, cl_2, cd, alpha_0."""
-        model = SingleRotorBemtModel(blade, is_ccw_rotor0)
+        config = config or FittingConfig.from_yaml(_CONFIG_DIR / "config_single_rotor.yaml")
+        model = SingleRotorBemtModel(blade, is_ccw_rotor0, model_config=config.model)
         objective = SingleRotorObjective(model)
-        return cls(model, objective, datasets, init_guess)
+        engine = _build_engine(model, objective, dv.OffsetAugmentedAeroCoeffDecisionVar(), config)
+        return cls(model, engine, datasets, init_guess)
+
+    @classmethod
+    def for_single_rotor_band_correction(cls, blade, is_ccw_rotor0: bool,
+                                         datasets: list[data_factory.FittingDataset], init_guess=None,
+                                         config: FittingConfig = None):
+        """Single-rotor fit with a bounded piecewise-linear CL/CD correction band.
+
+        Fits the offset-augmented aero coefficients plus per-knot CL/CD correction offsets
+        (see BandCorrectedDecisionVar). init_guess, if given, is a physical vector:
+        (cl_1, cl_2, cd, alpha_0, alpha_zero_lift, alpha_d_min) followed by the CL then CD
+        offsets; zero offsets reproduce the classical fit.
+        """
+        config = config or FittingConfig.from_yaml(_CONFIG_DIR / "config_single_rotor.yaml")
+        model = SingleRotorBemtModel(blade, is_ccw_rotor0, model_config=config.model)
+        decision_var = dv.BandCorrectedDecisionVar()
+        model.configure_for_band_correction_fit(decision_var.cl_knots, decision_var.cd_knots)
+        objective = SingleRotorObjective(model)
+        engine = _build_engine(model, objective, decision_var, config)
+        return cls(model, engine, datasets, init_guess)
+
+    @classmethod
+    def for_quadratic_rotor(cls, datasets: list[data_factory.FittingDataset],
+                            nominal_u_free_x=None, nominal_pitch=None):
+        """Quadratic per-condition fitting via closed-form least squares.
+
+        Fits [a_fx, b_fx, c_fx, a_fy, b_fy, c_fy, a_fz, b_fz, c_fz] for each
+        dataset independently using QuadraticSolver (lstsq — no iterative optimizer).
+        Call run_quadratic_fit() to run.
+
+        nominal_u_free_x / nominal_pitch: optional sweep grids; when given, each
+        condition's (u_free_x, pitch) label is snapped onto them so the resulting
+        lookup table lands on a clean regular grid.
+        """
+        model = QuadraticRotorModel()
+        engine = QuadraticFittingEngine(model, nominal_u_free_x, nominal_pitch)
+        return cls(model, engine, datasets)
+
+    @classmethod
+    def for_single_rotor_bemt(cls, blade, is_ccw_rotor0: bool,
+                              datasets: list[data_factory.FittingDataset], init_guess=None,
+                              config: FittingConfig = None):
+        """BEMT single-rotor fitting with root-found v_i from background wind.
+
+        Intended as a second-stage refinement after for_single_rotor.  Uses
+        momentum-theory root-finding (get_rotor_forces) per element instead of
+        integrating from sensed wind, so the aero coefficients are optimized
+        against the self-consistent BEMT solution.
+        """
+        config = config or FittingConfig.from_yaml(_CONFIG_DIR / "config_single_rotor.yaml")
+        model = SingleRotorBemtModel(blade, is_ccw_rotor0, model_config=config.model)
+        model.use_bemt = True
+        objective = SingleRotorObjective(model)
+        engine = _build_engine(model, objective, dv.OffsetAugmentedAeroCoeffDecisionVar(), config)
+        return cls(model, engine, datasets, init_guess)
 
     def run(self, is_multiseed: bool = True, is_fine_tune: bool = False):
         """Run fitting.
@@ -59,9 +163,26 @@ class FittingManager:
         seed_gen = SingleSeedGenerator(self.init_guess.tolist())
         return self.engine.fit_single(self.datasets, seed_generator=seed_gen, is_fine_tune=is_fine_tune)
 
+    def run_quadratic_fit(self) -> list[PerConditionResult]:
+        """Fit one quadratic profile per wind condition by handing the datasets to the engine.
+
+        The manager doesn't know or care how many conditions there are — the engine
+        owns the loop and returns a list of PerConditionResult.
+        """
+        if self.engine is None:
+            raise RuntimeError("run_quadratic_fit() requires an engine; use a factory method to build the manager.")
+        return self.engine.fit(self.datasets)
+
     def plot(self, dataset_idx: int = 0, lookup_table=None, is_using_lookup_table: bool = False,
-             sample_step: int = 1):
-        """Plot fit vs ground truth for one dataset (full-vehicle model only)."""
+             sample_step: int = 1, params=None):
+        """Plot fit vs ground truth for one dataset (full-vehicle model only).
+
+        Args:
+            params: optional parameter vector to apply before plotting; if None, uses
+                    whatever is currently set on the model (e.g. from a prior run()).
+        """
+        if params is not None:
+            self.model.apply_params(params)
         return FitPlotter.plot_the_fit(
             self.model,
             self.datasets[dataset_idx],

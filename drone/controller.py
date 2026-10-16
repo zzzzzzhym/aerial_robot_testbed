@@ -25,7 +25,8 @@ class DroneController(simulation.scenario.Controller):
         # propeller_lookup_table_name = "apc_8x6_with_trail"
         # propeller_lookup_table_name = "apc_8x6_fitted_in_noise_and_vibration"
         # propeller_lookup_table_name = "p600"
-        propeller_lookup_table_name = "p600_full_range"
+        propeller_lookup_table_name = "p600_single_rotor_after_bemt_fit"
+        # propeller_lookup_table_name = "p600_single_rotor_quadratic"
         self.is_using_baseline_disturbance_estimator = True
         self.is_using_pure_daiml_disturbance_estimator = False
         self.is_using_bemt_disturbance_estimator = False
@@ -78,15 +79,46 @@ class DroneController(simulation.scenario.Controller):
         self.max_f_disturb_compensation = 30.0  # disturbance compensation force saturation
         self.b_2d_norm_min = 1e-3   # minimum norm to avoid singularity
         self.max_torque = 10.0  # maximum torque
-        
-        # internal var logging
-        self.torque_feedback = np.array([0.0, 0.0, 0.0])
-        self.torque_coriolis = np.array([0.0, 0.0, 0.0])
-        self.torque_feedforward = np.array([0.0, 0.0, 0.0])
-        self.f_feedback = np.array([0.0, 0.0, 0.0])
-        self.f_feedforward = np.array([0.0, 0.0, 0.0])
-        self.f_disturb_compensation = np.array([0.0, 0.0, 0.0])
-        self.f_disturb_sensed_raw = np.array([0.0, 0.0, 0.0])
+
+        self._log_data = {
+            "e_x":                     None,
+            "e_v":                     None,
+            "e_a":                     None,
+            "e_j":                     None,
+            "e_r":                     None,
+            "e_omega":                 None,
+            "psi_r_rd":                None,
+            "f_ctrl_input":            None,
+            "f_ctrl_input_dot":        None,
+            "f_d":                     None,
+            "f_d_dot":                 None,
+            "f_d_dot2":                None,
+            "f_feedback":              None,
+            "f_feedforward":           None,
+            "f_disturb_compensation":  None,
+            "f_disturb_est":           None,
+            "f_disturb_est_base":      None,
+            "f_disturb_est_bemt":      None,
+            "f_disturb_sensed_raw":    None,
+            "torque_ctrl_input":       None,
+            "torque_feedback":         None,
+            "torque_coriolis":         None,
+            "torque_feedforward":      None,
+            "torque_disturb_est":      None,
+            "torque_disturb_est_base": None,
+            "torque_disturb_est_bemt": None,
+            "omega_desired":           None,
+            "pose_desired":            None,
+            "pose_desired_dot":        None,
+            "pose_desired_dot2":       None,
+            "f_motor_desired":                  None,
+            "rotor_speeds_desired":             None,
+            "rotor_speeds_desired_with_inflow": None,
+            "rotor_speeds_desired_no_inflow":   None,
+        }
+
+    def _log(self, name: str, value) -> None:
+        self._log_data[name] = value.copy() if hasattr(value, 'copy') else value
 
     def step(self, sensor_data: simulation.interface.SensorData, ref: trajectory.TrajectoryReference):
         self.step_tracking_error(sensor_data, ref)
@@ -101,6 +133,8 @@ class DroneController(simulation.scenario.Controller):
       
         self.step_desired_force(sensor_data, ref)
         self.step_tracking_control(sensor_data)
+        self._log("f_ctrl_input", sensor_data.pose @ self.f)
+        self._log("f_ctrl_input_dot", sensor_data.pose @ self.f_dot)
         self.step_desired_pose(ref)
         self.step_attitude_error(sensor_data)
         self.step_attitude_control(sensor_data)
@@ -110,7 +144,7 @@ class DroneController(simulation.scenario.Controller):
     def step_disturbance_estimator(self, sensor_data: simulation.interface.SensorData):
         # tracking_error = np.zeros(6)  # assume no tracking error term in disturbance estimator
         tracking_error = np.hstack((self.e_v, np.zeros(3)))
-        self.f_disturb_sensed_raw = self.get_sensed_disturbance(sensor_data)[0:3]
+        self._log("f_disturb_sensed_raw", self.get_sensed_disturbance(sensor_data)[0:3])
         self.disturbance_estimator.step_disturbance(
             sensor_data.position,
             sensor_data.v,
@@ -118,15 +152,17 @@ class DroneController(simulation.scenario.Controller):
             sensor_data.omega,
             self.f[2],
             self.torque,
-            np.array([sensor_data.rotors.rotors[0].rotation_speed, 
-                      sensor_data.rotors.rotors[1].rotation_speed, 
-                      sensor_data.rotors.rotors[2].rotation_speed, 
+            np.array([sensor_data.rotors.rotors[0].rotation_speed,
+                      sensor_data.rotors.rotors[1].rotation_speed,
+                      sensor_data.rotors.rotors[2].rotation_speed,
                       sensor_data.rotors.rotors[3].rotation_speed]),
             self.get_sensed_disturbance(sensor_data),
             tracking_error
         )
         self.f_disturb = self.disturbance_estimator.get_disturbance_force()
         self.torque_disturb = self.disturbance_estimator.get_disturbance_torque()
+        self._log("f_disturb_est", self.f_disturb)
+        self._log("torque_disturb_est", self.torque_disturb)
 
         self.baseline_disturbance_estimator.step_disturbance(
             self.get_sensed_disturbance(sensor_data),
@@ -134,6 +170,8 @@ class DroneController(simulation.scenario.Controller):
         )
         self.f_disturb_base = self.baseline_disturbance_estimator.get_disturbance_force()
         self.torque_disturb_base = self.baseline_disturbance_estimator.get_disturbance_torque()
+        self._log("f_disturb_est_base", self.f_disturb_base)
+        self._log("torque_disturb_est_base", self.torque_disturb_base)
 
         predicted_force, predicted_torque = self.get_predicted_air_force(sensor_data)
         # predicted_force = predicted_force + self.f  # f_predicted = f_control + f_disturb; f_control = -self.f
@@ -143,13 +181,13 @@ class DroneController(simulation.scenario.Controller):
             sensor_data.v,
             sensor_data.q,
             sensor_data.omega,
-            sensor_data.rotors.rotors[0].local_wind_velocity, 
-            sensor_data.rotors.rotors[1].local_wind_velocity, 
-            sensor_data.rotors.rotors[2].local_wind_velocity, 
+            sensor_data.rotors.rotors[0].local_wind_velocity,
+            sensor_data.rotors.rotors[1].local_wind_velocity,
+            sensor_data.rotors.rotors[2].local_wind_velocity,
             sensor_data.rotors.rotors[3].local_wind_velocity,
-            np.array([sensor_data.rotors.rotors[0].rotation_speed, 
-                      sensor_data.rotors.rotors[1].rotation_speed, 
-                      sensor_data.rotors.rotors[2].rotation_speed, 
+            np.array([sensor_data.rotors.rotors[0].rotation_speed,
+                      sensor_data.rotors.rotors[1].rotation_speed,
+                      sensor_data.rotors.rotors[2].rotation_speed,
                       sensor_data.rotors.rotors[3].rotation_speed]),
             self.get_sensed_disturbance(sensor_data),
             tracking_error,
@@ -158,6 +196,8 @@ class DroneController(simulation.scenario.Controller):
         )
         self.f_disturb_bemt = self.bemt_disturbance_estimator.get_disturbance_force()
         self.torque_disturb_bemt = self.bemt_disturbance_estimator.get_disturbance_torque()*0.0 # assume no angular acceleration available to estimate torque disturbance
+        self._log("f_disturb_est_bemt", self.f_disturb_bemt)
+        self._log("torque_disturb_est_bemt", self.torque_disturb_bemt)
 
     def get_predicted_air_force(self, sensor_data: simulation.interface.SensorData):
         """Get predicted air force and torque on drone from propeller lookup table.
@@ -222,6 +262,9 @@ class DroneController(simulation.scenario.Controller):
         e3_negative = np.array([0.0, 0.0, -1.0])
         f_feedforward = -self.params.m*params.Environment.g*e3_negative + self.params.m*ref.x_d_dot2
         self.f_d = f_feedback + f_feedforward + f_disturb_compensation
+        self._log("f_feedback", f_feedback)
+        self._log("f_feedforward", f_feedforward)
+        self._log("f_disturb_compensation", f_disturb_compensation)
         if np.abs(self.f_d@self.f_d) < 0.0001:
             warnings.warn("DroneController: f_d too close to 0")
             self.f_d = -0.0001*e3_negative    # small upward force direction
@@ -242,11 +285,11 @@ class DroneController(simulation.scenario.Controller):
         else:
             self.f_d_dot2 = (-params.Control.k_x*self.e_a - params.Control.k_v *
                             self.e_j)
-            
-        # logging
-        self.f_feedback = f_feedback
-        self.f_feedforward = f_feedforward
-        self.f_disturb_compensation = f_disturb_compensation
+        self._log("f_d", self.f_d)
+        self._log("f_d_dot", self.f_d_dot)
+        self._log("f_d_dot2", self.f_d_dot2)
+        self._log("e_a", self.e_a)
+        self._log("e_j", self.e_j)
 
     def step_tracking_control(self, sensor_data: simulation.interface.SensorData):
         self.f, self.f_dot = DroneController.project_desired_force_to_body_thrust(
@@ -296,15 +339,15 @@ class DroneController(simulation.scenario.Controller):
                 utils.get_hat_map(sensor_data.omega)@sensor_data.pose.T@self.omega_desired)
         torque_feedback = utils.saturate_vector_norm(torque_feedback, self.max_torque)
         torque_feedforward = utils.saturate_vector_norm(torque_feedforward, self.max_torque)
+        self._log("torque_feedback", torque_feedback)
+        self._log("torque_coriolis", torque_coriolis)
+        self._log("torque_feedforward", torque_feedforward)
         self.torque = torque_feedback + torque_coriolis + torque_feedforward
 
         # torque saturation
         self.torque = utils.saturate_vector_norm(self.torque, self.max_torque)
+        self._log("torque_ctrl_input", self.torque)
 
-        # logging
-        self.torque_feedback = torque_feedback
-        self.torque_coriolis = torque_coriolis
-        self.torque_feedforward = torque_feedforward
 
     def step_desired_pose(self, ref: trajectory.TrajectoryReference):
         b_3d, b_3d_dot, b_3d_dot2 = utils.get_unit_vector_derivatives(self.f_d,
@@ -347,15 +390,23 @@ class DroneController(simulation.scenario.Controller):
         omega_desired_dot_hat = self.pose_desired_dot2@self.pose_desired.T + \
             self.pose_desired_dot@self.pose_desired_dot.T
         self.omega_desired_dot = utils.get_vee_map(omega_desired_dot_hat)
+        self._log("pose_desired", self.pose_desired)
+        self._log("pose_desired_dot", self.pose_desired_dot)
+        self._log("pose_desired_dot2", self.pose_desired_dot2)
+        self._log("omega_desired", self.omega_desired)
 
     def step_tracking_error(self, sensor_data: simulation.interface.SensorData, ref: trajectory.TrajectoryReference):
         self.e_x = sensor_data.position - ref.x_d
         self.e_v = sensor_data.v - ref.v_d
+        self._log("e_x", self.e_x)
+        self._log("e_v", self.e_v)
 
     def step_attitude_error(self, sensor_data: simulation.interface.SensorData):
         self.e_r = utils.get_vee_map(
             0.5*(self.pose_desired.T@sensor_data.pose - sensor_data.pose.T@self.pose_desired))
         self.e_omega = sensor_data.omega - sensor_data.pose.T@self.omega_desired
+        self._log("e_r", self.e_r)
+        self._log("e_omega", self.e_omega)
 
     def step_error_function_so3(self, sensor_data: simulation.interface.SensorData):
         '''The error function on SO(3) is defined as the angle between the desired and actual rotation matrix.
@@ -364,41 +415,57 @@ class DroneController(simulation.scenario.Controller):
         self.psi_r_rd = 0.5*(1 - self.pose_desired[:,0]@sensor_data.pose[:,0] +
                         1 - self.pose_desired[:,1]@sensor_data.pose[:,1] +
                         1 - self.pose_desired[:,2]@sensor_data.pose[:,2])
+        self._log("psi_r_rd", self.psi_r_rd)
     
     def step_motor_output(self, sensor_data: simulation.interface.SensorData):
         self.force_motor_desired = self.params.m_wrench_to_thrust@np.hstack((self.f[2], self.torque))
 
-        if self.is_using_inflow_model:  # with inflow model
-            # # use sensed wind speed
-            # for i, thrust in enumerate(self.force_motor_desired):
-            #     self.rotation_speed[i] = self.propeller_force_table.get_rotation_speed_sensed_wind(
-            #         sensor_data.rotors.rotors[i].sensed_wind_velocity,
-            #         sensor_data.rotors.rotors[i].velocity_inertial_frame,
-            #         sensor_data.rotors.rotors[i].pose,
-            #         sensor_data.rotors.rotors[i].rotation_speed,
-            #         thrust
-            #     )
-            
-            # use background wind speed
-            for i, thrust in enumerate(self.force_motor_desired):
-                self.rotation_speed[i] = self.propeller_force_table.get_rotation_speed(
-                    sensor_data.rotors.rotors[i].local_wind_velocity,
-                    sensor_data.rotors.rotors[i].velocity_inertial_frame,
-                    sensor_data.rotors.rotors[i].pose,
-                    sensor_data.rotors.rotors[i].rotation_speed,
-                    thrust
-                )
-        else:   # without inflow model
-            for i, thrust in enumerate(self.force_motor_desired):
-                self.rotation_speed[i] = self.propeller_force_table.get_rotation_speed(
-                    np.zeros(3),
-                    np.zeros(3),
-                    sensor_data.rotors.rotors[i].pose,
-                    sensor_data.rotors.rotors[i].rotation_speed,
-                    thrust
-                )
+        rotation_speed_with_inflow = np.zeros(4)
+        rotation_speed_no_inflow = np.zeros(4)
+
+        # with inflow model: use background wind speed
+        # # alternatively, use sensed wind speed:
+        # for i, thrust in enumerate(self.force_motor_desired):
+        #     rotation_speed_with_inflow[i] = self.propeller_force_table.get_rotation_speed_sensed_wind(
+        #         sensor_data.rotors.rotors[i].sensed_wind_velocity,
+        #         sensor_data.rotors.rotors[i].velocity_inertial_frame,
+        #         sensor_data.rotors.rotors[i].pose,
+        #         sensor_data.rotors.rotors[i].rotation_speed,
+        #         thrust
+        #     )
+        for i, thrust in enumerate(self.force_motor_desired):
+            rotation_speed_with_inflow[i] = self.propeller_force_table.get_rotation_speed(
+                sensor_data.rotors.rotors[i].local_wind_velocity,
+                sensor_data.rotors.rotors[i].velocity_inertial_frame,
+                sensor_data.rotors.rotors[i].pose,
+                sensor_data.rotors.rotors[i].rotation_speed,
+                thrust
+            )
+
+        # without inflow model: zero wind
+        for i, thrust in enumerate(self.force_motor_desired):
+            rotation_speed_no_inflow[i] = self.propeller_force_table.get_rotation_speed(
+                np.zeros(3),
+                np.zeros(3),
+                sensor_data.rotors.rotors[i].pose,
+                sensor_data.rotors.rotors[i].rotation_speed,
+                thrust
+            )
+
+        if self.is_using_inflow_model:
+            self.rotation_speed = rotation_speed_with_inflow.copy()
+        else:
+            self.rotation_speed = rotation_speed_no_inflow.copy()
+
+        self._log("f_motor_desired", self.force_motor_desired)
+        self._log("rotor_speeds_desired", self.rotation_speed)
+        self._log("rotor_speeds_desired_with_inflow", rotation_speed_with_inflow)
+        self._log("rotor_speeds_desired_no_inflow", rotation_speed_no_inflow)
 
     def get_control_output(self):
         """controller provides yaw torque and rotation speed because rotor yaw torque is not modeled"""
         return simulation.interface.ControllerOutput(self.rotation_speed, np.array([0.0, 0.0, self.f[2]]), self.torque)
+
+    def get_log_data(self) -> dict:
+        return self._log_data
 

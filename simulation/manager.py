@@ -47,6 +47,11 @@ class Manager:
     def save_result_as_pkl(self, file_name: str) -> None:
         self.logger.log_sim_result(file_name, 'pkl')
 
+    @staticmethod
+    def result_exists(file_name: str, is_csv: bool = True) -> bool:
+        """Check whether a result file already exists, before running a sim."""
+        return sim_logger.Logger.result_exists(file_name, 'csv' if is_csv else 'pkl')
+
     def plot(self) -> None:
         self.result.make_plots(self.logger.output)
         

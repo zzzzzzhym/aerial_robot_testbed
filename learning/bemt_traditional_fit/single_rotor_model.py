@@ -1,14 +1,14 @@
 import numpy as np
 
 from inflow_model.bet import BladeElementTheory
+from inflow_model.airfoil.aero_coeff import BandCorrectedAeroCoefficients
 import data_factory
+from learning.bemt_traditional_fit.fitting_config import ModelConfig
 
 
 class SingleRotorBemtModel:
     """BET model for single-rotor (test stand) fitting.
-
-    Fits cl_1, cl_2, cd, alpha_0 on rotor 0 only.
-    No k_body_drag term — the body is fixed to the ground.
+    Fits cl_1, cl_2, cd, alpha_0, alpha_zero_lift, alpha_d_min on rotor 0 only.
 
     Uses rotor_0_sensed_wind_velocity (background wind + induced velocity,
     in inertial frame) directly as the flow at the rotor disk.  No separate
@@ -16,31 +16,60 @@ class SingleRotorBemtModel:
     v_flow_disk_frame exactly.
     """
 
-    PARAMETER_NAMES = ("cl_1", "cl_2", "cd", "alpha_0")
-
-    BOUNDS = [
-        (2.0, 50.0),                          # cl_1
-        (0.0, 50.0),                          # cl_2
-        (0.0, 5.0),                           # cd
-        (np.radians(10), np.radians(40)),     # alpha_0
-    ]
-
-    def __init__(self, blade, is_ccw_rotor0: bool):
+    def __init__(self, blade, is_ccw_rotor0: bool, model_config: ModelConfig):
         self.blade = blade
         self.is_ccw_rotor0 = is_ccw_rotor0
         self.bet_instance = BladeElementTheory(self.blade)
+        self.model_config = model_config
+        self.use_bemt = False
         self.sample_distance = None
         self.adjust_resolution(is_fine_tune=False)
 
+    def apply_params(self, x):
+        """Apply physical coefficients (cl_1, cl_2, cd, alpha_0, alpha_zero_lift, alpha_d_min)."""
+        cl_1, cl_2, cd, alpha_0, alpha_zero_lift, alpha_d_min = x
+        self.blade.aero_coeff.update_fit_params(cl_1, cl_2, cd, alpha_0, alpha_zero_lift, alpha_d_min)
+
+    def configure_for_band_correction_fit(self, cl_knots, cd_knots):
+        """Switch to fitting the aero coefficients plus a CL/CD correction band.
+
+        Swaps the blade's aero coefficients to a BandCorrectedAeroCoefficients (seeded from
+        the current classical coefficients, zero correction) and redirects apply_params to
+        set both the base coefficients and the per-knot offsets.
+
+        Parameters:
+        - cl_knots: CL correction knot angles (radians)
+        - cd_knots: CD correction knot angles (radians)
+        """
+        base = self.blade.aero_coeff
+        self.blade.aero_coeff = BandCorrectedAeroCoefficients(
+            cl_1=base.cl_1, cl_2=base.cl_2, alpha_0=base.alpha_0, cd=base.cd,
+            cd_0=base.cd_0, cp=base.cp,
+            alpha_zero_lift=base.alpha_zero_lift, alpha_d_min=base.alpha_d_min,
+            cl_knots=cl_knots, cl_offsets=np.zeros(len(cl_knots)),
+            cd_knots=cd_knots, cd_offsets=np.zeros(len(cd_knots)),
+        )
+        self._num_cl_offsets = len(cl_knots)
+        self.apply_params = self._apply_params_with_band
+
+    def _apply_params_with_band(self, x):
+        """Apply physical coefficients (6) followed by CL then CD correction offsets."""
+        cl_1, cl_2, cd, alpha_0, alpha_zero_lift, alpha_d_min = x[:6]
+        coeff = self.blade.aero_coeff
+        coeff.update_fit_params(cl_1, cl_2, cd, alpha_0, alpha_zero_lift, alpha_d_min)
+        offsets = np.asarray(x[6:], dtype=float)
+        coeff.cl_offsets = offsets[:self._num_cl_offsets]
+        coeff.cd_offsets = offsets[self._num_cl_offsets:]
+
     def adjust_resolution(self, is_fine_tune: bool):
         if is_fine_tune:
-            self.sample_distance = 20
-            num_of_elements = 20
-            num_of_rotation_segments = 18
+            self.sample_distance = self.model_config.fine_sample_distance
+            num_of_elements = self.model_config.fine_n_elements
+            num_of_rotation_segments = self.model_config.fine_n_rotation_segments
         else:
-            self.sample_distance = 100
-            num_of_elements = 2
-            num_of_rotation_segments = 6
+            self.sample_distance = self.model_config.coarse_sample_distance
+            num_of_elements = self.model_config.coarse_n_elements
+            num_of_rotation_segments = self.model_config.coarse_n_rotation_segments
         print(
             f"Sample distance: {self.sample_distance}, "
             f"Num of elements: {num_of_elements}, "
@@ -72,16 +101,48 @@ class SingleRotorBemtModel:
             is_ccw_blade=self.is_ccw_rotor0,
         )
 
-    def get_residual_force(self, dataset: data_factory.FittingDataset, i: int) -> np.ndarray:
-        """Residual = f_BET_disk - f_sensor_disk for rotor 0 at sample i.
+    def compute_rotor0_thrust_bemt(self, u_free: np.ndarray, v_forward: np.ndarray,
+                                   r_disk: np.ndarray, omega: float) -> np.ndarray:
+        """BEMT-predicted force for rotor 0 in disk frame.
 
-        Requires dataset.rotor_0_sensed_wind_velocity (present in datasets
-        recorded with the updated logger).
+        Uses momentum-theory root-finding per blade element to solve v_i from the
+        background free-stream wind u_free (induced velocity not pre-embedded).
+
+        Args:
+            u_free: rotor_0_local_wind_velocity — background wind (inertial frame, m/s)
+            v_forward: rotor_0_velocity — disk velocity in inertial frame (m/s)
+            r_disk: disk-to-inertial rotation matrix
+            omega: absolute rotor speed (rad/s, always positive)
+
+        Returns:
+            force in disk frame (N)
         """
-        f_predicted_disk = self.compute_rotor0_thrust(
-            dataset.rotor_0_sensed_wind_velocity[i],
-            dataset.shared_r_disk[i],
-            dataset.omega_0[i],
+        omega_signed = omega if self.is_ccw_rotor0 else -omega
+        f_x, f_y, f_z, _ = self.bet_instance.get_rotor_forces(
+            u_free, v_forward, r_disk, omega_signed, is_ccw_blade=self.is_ccw_rotor0,
         )
-        f_measured_disk = dataset.shared_r_disk[i].T @ dataset.rotor_0_f_rotor_inertial_frame[i]
+        return np.array([f_x, f_y, f_z])
+
+    def get_residual_force(self, dataset: data_factory.FittingDataset, i: int) -> np.ndarray:
+        """Residual = f_predicted_disk - f_sensor_disk for rotor 0 at sample i.
+
+        When use_bemt=False (default): BET with rotor_0_sensed_wind_velocity.
+        When use_bemt=True: BEMT with root-found v_i from rotor_0_local_wind_velocity.
+        """
+        r_disk = dataset.shared_r_disk[i]
+        omega = dataset.omega_0[i]
+        if self.use_bemt:
+            f_predicted_disk = self.compute_rotor0_thrust_bemt(
+                dataset.u_free_0[i],
+                dataset.v_forward_0[i],
+                r_disk,
+                omega,
+            )
+        else:
+            f_predicted_disk = self.compute_rotor0_thrust(
+                dataset.rotor_0_sensed_wind_velocity[i],
+                r_disk,
+                omega,
+            )
+        f_measured_disk = r_disk.T @ dataset.rotor_0_f_rotor_inertial_frame[i]
         return f_predicted_disk - f_measured_disk

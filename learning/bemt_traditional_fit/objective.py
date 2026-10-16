@@ -18,8 +18,7 @@ class FittingObjective:
         self.weights = weights
 
     def get_loss(self, x, datasets: list[data_factory.FittingDataset], lookup_table=None, is_using_lookup_table=False):
-        self.model.blade.cl_1, self.model.blade.cl_2, self.model.blade.cd, self.model.blade.alpha_0, self.model.k_body_drag = x[:5]
-        self.model.bet_instance.refresh_blade()
+        self.model.apply_params(x)
 
         horizontal_weight = self.weights.horizontal_weight if self.weights is not None else self.model.horizontal_weight
 

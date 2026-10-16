@@ -24,6 +24,7 @@ class PropellerLookupTable:
             self._u_sensed_disk_plane_bounds = None  # set when interpolator is built
             self._u_sensed_normal_bounds = None       # set when interpolator is built
             self.interpolator = None
+            self._warned_out_of_range = False  # emit the out-of-range warning only once
             self.load_lookup_table(filename)
 
         def read_data(self, filename: str):
@@ -110,10 +111,12 @@ class PropellerLookupTable:
             if np.abs(omega - omega_clipped) > self.max_allowed_extrapolation or \
             np.abs(u_free_x - u_free_x_clipped) > self.max_allowed_extrapolation or \
             np.abs(pitch - pitch_clipped) > self.max_allowed_extrapolation:
-                warnings.warn(f"Warning: Interpolating outside the range:\n"
-                              f"u_free_x [m/s]: {u_free_x} (clipped: {u_free_x_clipped}),\n"
-                              f"pitch [deg]: {pitch*180/np.pi} (clipped: {pitch_clipped*180/np.pi}),\n"
-                              f"omega: {omega} (clipped: {omega_clipped})")
+                if not self._warned_out_of_range:
+                    self._warned_out_of_range = True
+                    warnings.warn(f"Warning: Interpolating outside the range (warned once):\n"
+                                  f"u_free_x [m/s]: {u_free_x} (clipped: {u_free_x_clipped}),\n"
+                                  f"pitch [deg]: {pitch*180/np.pi} (clipped: {pitch_clipped*180/np.pi}),\n"
+                                  f"omega: {omega} (clipped: {omega_clipped})")
             return self.interpolator((u_free_x_clipped, pitch_clipped, omega_clipped))
 
         def query_data_from_table_sensed_wind(self, u_sensed_disk_plane: float, u_sensed_normal: float, omega: float):
@@ -452,43 +455,37 @@ class PropellerLookupTable:
         _DEFAULT_PITCH_RANGE = tuple(np.deg2rad([-90, -60, -45, -30, -15, 0, 15, 30, 45, 60, 90]))  # rad
         _DEFAULT_OMEGA_RANGE = (0, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1500, 2000, 2600)  # rad/s
 
-        def __init__(self):
-            self.blade = None
-            self.omega_range = None # rad/s
-            self.u_free_x_range = None  # m/s
-            self.pitch_range = None # rad
-            self.table = None
-            self.interp_func = None
-            self.max_allowed_extrapolation = 1e-3
+        def __init__(self, blade: Optional[blade_params.Blade] = None,
+                     omega_range: Optional[np.ndarray] = None,
+                     u_free_x_range: Optional[np.ndarray] = None,
+                     pitch_range: Optional[np.ndarray] = None):
+            # Everything the table is built from / saved with lives on the instance.
+            self.blade = blade  # recorded in the saved table as an aero-coeff reference
+            self.omega_range = np.asarray(omega_range) if omega_range is not None else np.array(PropellerLookupTable.Maker._DEFAULT_OMEGA_RANGE)
+            self.u_free_x_range = np.asarray(u_free_x_range) if u_free_x_range is not None else np.array(PropellerLookupTable.Maker._DEFAULT_U_FREE_X_RANGE)
+            self.pitch_range = np.asarray(pitch_range) if pitch_range is not None else np.array(PropellerLookupTable.Maker._DEFAULT_PITCH_RANGE)
+            self.table = None  # (n_u_free_x, n_pitch, n_omega, 4) filled by make_propeller_lookup_table
 
-        @staticmethod
-        def make_propeller_lookup_table(filename: str,
-                                        blade: Optional[blade_params.Blade] = None,
-                                        omega_range: Optional[np.ndarray] = None,
-                                        u_free_x_range: Optional[np.ndarray] = None,
-                                        pitch_range: Optional[np.ndarray] = None):
-
-            blade = blade if blade is not None else blade_params.APC_8x6()
-            omega_range = omega_range if omega_range is not None else np.array(PropellerLookupTable.Maker._DEFAULT_OMEGA_RANGE)
-            u_free_x_range = u_free_x_range if u_free_x_range is not None else np.array(PropellerLookupTable.Maker._DEFAULT_U_FREE_X_RANGE)
-            pitch_range = pitch_range if pitch_range is not None else np.array(PropellerLookupTable.Maker._DEFAULT_PITCH_RANGE)
-            table = np.zeros((len(u_free_x_range), len(pitch_range), len(omega_range), 4))   # 4 for f_x, f_y, f_z, v_i
+        def make_propeller_lookup_table(self, filename: str):
+            if self.blade is None:
+                self.blade = blade_params.APC_8x6()
+            self.table = np.zeros((len(self.u_free_x_range), len(self.pitch_range), len(self.omega_range), 4))   # 4 for f_x, f_y, f_z, v_i
 
             print("[PropellerLookupTable] Making lookup table:")
-            print("Omega range:", omega_range)
-            print("u_free_x range:", u_free_x_range)
-            print("Pitch range:", pitch_range)
+            print("Omega range:", self.omega_range)
+            print("u_free_x range:", self.u_free_x_range)
+            print("Pitch range:", self.pitch_range)
             v_forward = np.array([0, 0, 0])
-            bet_instance = bet.BladeElementTheory(blade)
-            r_disk_range = [bet_instance.pitch_rotor_disk_along_y_axis(pitch) for pitch in pitch_range]
-            for i, u_free_x in enumerate(u_free_x_range):
+            bet_instance = bet.BladeElementTheory(self.blade)
+            r_disk_range = [bet_instance.pitch_rotor_disk_along_y_axis(pitch) for pitch in self.pitch_range]
+            for i, u_free_x in enumerate(self.u_free_x_range):
                 u_free = np.array([u_free_x, 0, 0])
                 for j, r_disk in enumerate(r_disk_range):
-                    for k, omega in enumerate(omega_range):
+                    for k, omega in enumerate(self.omega_range):
                         f_x, f_y, f_z, v_i = bet_instance.get_rotor_forces(u_free, v_forward, r_disk, omega, is_ccw_blade=True)
-                        table[i, j, k, :] = [f_x, f_y, f_z, v_i]
-                        print(f"u_free_x: {u_free_x:.4f}, pitch: {np.rad2deg(pitch_range[j]):.4f}, omega: {omega:.4f}, forces: ({f_x:.4f}, {f_y:.4f}, {f_z:.4f}), v_i: {v_i:.4f}")
-            PropellerLookupTable.Maker.save_data(filename, u_free_x_range, pitch_range, omega_range, table)
+                        self.table[i, j, k, :] = [f_x, f_y, f_z, v_i]
+                        print(f"u_free_x: {u_free_x:.4f}, pitch: {np.rad2deg(self.pitch_range[j]):.4f}, omega: {omega:.4f}, forces: ({f_x:.4f}, {f_y:.4f}, {f_z:.4f}), v_i: {v_i:.4f}")
+            self.save_data(filename)
 
         @staticmethod
         def _compute_sensed_tables(u_free_x_range, pitch_range, table):
@@ -512,21 +509,23 @@ class PropellerLookupTable:
             normal = normal_2d[:, :, np.newaxis] - v_i  # (n_wind_speeds, n_pitches, n_omegas)
             return disk_plane, normal
 
-        @staticmethod
-        def save_data(filename: str, u_free_x_range: np.ndarray, pitch_range: np.ndarray, omega_range: np.ndarray, table: np.ndarray):
+        def save_data(self, filename: str):
             file_path = os.path.join(os.path.dirname(__file__), "lookup_table", filename + ".yaml")
             print("Saving data to", os.path.relpath(file_path, os.getcwd()))
 
             u_sensed_disk_plane_table, u_sensed_normal_table = \
-                PropellerLookupTable.Maker._compute_sensed_tables(u_free_x_range, pitch_range, table)
+                PropellerLookupTable.Maker._compute_sensed_tables(self.u_free_x_range, self.pitch_range, self.table)
 
             data = {
-                "omega_range": omega_range.tolist(),
-                "u_free_x_range": u_free_x_range.tolist(),
-                "pitch_range": pitch_range.tolist(),
-                "table": table.tolist(),
+                "omega_range": self.omega_range.tolist(),
+                "u_free_x_range": self.u_free_x_range.tolist(),
+                "pitch_range": self.pitch_range.tolist(),
+                "table": self.table.tolist(),
                 "u_sensed_disk_plane_table": u_sensed_disk_plane_table.tolist(),
                 "u_sensed_normal_table": u_sensed_normal_table.tolist(),
             }
+            if self.blade is not None:
+                # Reference only (what aero coefficients produced this table); not read back.
+                data["aero_coeffs"] = self.blade.aero_coeff.to_dict()
             with open(file_path, 'w') as file:
                 yaml.dump(data, file)

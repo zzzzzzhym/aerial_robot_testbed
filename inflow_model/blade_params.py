@@ -2,18 +2,37 @@ import numpy as np
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
+from airfoil.aero_coeff import ClassicalAeroCoefficients
+
 
 class Blade:
-    def __init__(self, num_of_blades=2, y_max=0.1, cl_1=5.3, cl_2=1.7, alpha_0=np.radians(20.6), cd=1.8, cd_0=0.01):
+    def __init__(self, num_of_blades=2, y_max=0.1, cl_1=5.3, cl_2=1.7, alpha_0=np.radians(20.6), cd=1.8, cd_0=0.01,
+                 alpha_zero_lift=0.0, alpha_d_min=0.0):
         self.num_of_blades = num_of_blades
         self.y_max = y_max  # blade span range from y_min to y_max
         self.y_min = 0
-        self.cl_1 = cl_1
-        self.cl_2 = cl_2
-        self.alpha_0 = alpha_0
-        self.cd = cd
-        self.cd_0 = cd_0
+        # Aero coefficients live on the blade as an object, not as loose scalars.
+        # Spanwise-uniform for now; see get_aero_coeff for the per-span extension point.
+        self.aero_coeff = ClassicalAeroCoefficients(
+            cl_1=cl_1, cl_2=cl_2, alpha_0=alpha_0, cd=cd, cd_0=cd_0,
+            alpha_zero_lift=alpha_zero_lift, alpha_d_min=alpha_d_min,
+        )
         self.name = "NA"
+        self.sim_data_class = None  # subclasses set this to a GroundTruthBladeData subclass
+
+    def get_aero_coeff(self, y: float):
+        """Return the aero coefficients at span position y.
+
+        Spanwise-uniform for now, so y is ignored.  This is the extension point for
+        per-span aero coefficients (e.g. a lookup over blade sections) without touching BET.
+
+        Parameters:
+        - y: Spanwise position (m)
+
+        Returns:
+        - AeroCoefficients at span position y
+        """
+        return self.aero_coeff
 
     def get_chord(self, y: float):
         raise NotImplementedError
@@ -42,11 +61,12 @@ class kde_cf155_tp(Blade):
 
 class APC_8x6(Blade):
     """
-        Gill, Rajan, and Raffaello D'andrea. "Propeller thrust and drag in forward flight." 
+        Gill, Rajan, and Raffaello D'andrea. "Propeller thrust and drag in forward flight."
         2017 IEEE Conference on control technology and applications (CCTA). IEEE, 2017.
-    """  
+    """
     def __init__(self):
         super().__init__(num_of_blades=2, y_max=0.1, cl_1=5.3, cl_2=1.7, alpha_0=np.radians(20.6), cd=1.8, cd_0=0.01)
+        self.sim_data_class = APC_8x6_OfficialData
         x_table = [0.0, 0.3, 1.0]
         y_table = [0.8, 1.0, 0.0]
         self.interp_func = interp1d(x_table, y_table, kind="linear")
@@ -72,6 +92,7 @@ class P600_Blade(Blade):
     def __init__(self):
         super().__init__(num_of_blades=2, y_max=0.195, cl_1=20.0, cl_2=10.0) # init guess
         # super().__init__(num_of_blades=2, y_max=0.195, cl_1=44.86982035, cl_2=24.79577442, cd=1.47286755, alpha_0=0.43897916)   # fitted
+        self.sim_data_class = P600_SimData
         self.r = np.array([0.1282, 0.2051, 0.3077, 0.4103, 0.5128, 0.6154, 0.7179, 0.8205, 0.9231, 0.9846]) # normalized spanwise position (y/y_max)
         self.chord = np.array([0.0103, 0.0139, 0.0220, 0.0267, 0.0284, 0.0278, 0.0253, 0.0210, 0.0147, 0.0093])
         self.pitch = np.array([

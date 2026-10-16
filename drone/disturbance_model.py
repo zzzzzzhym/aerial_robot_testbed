@@ -40,6 +40,10 @@ class DisturbanceForce:
         self.f_explicit = np.zeros(3)
         self.t_implicit = np.zeros(3)
         self.t_explicit = np.zeros(3)
+        self._log_data = {
+            "f_disturb": None,
+            "torque_disturb": None,
+        }
 
     def update_explicit_wrench(self, t: float=0.0, state: dynamics_state.State=None) -> None:
         """API of explicit disturbance force
@@ -59,7 +63,13 @@ class DisturbanceForce:
         Returns:
             tuple of np.ndarray: (3,) array to represent (f_x, f_y, f_z) and (3,) array to represent (t_x, t_y, t_z)
         """
-        return np.zeros(3), np.zeros(3)    
+        return np.zeros(3), np.zeros(3)
+
+    def _log(self, name: str, value) -> None:
+        self._log_data[name] = value.copy() if hasattr(value, 'copy') else value
+
+    def get_log_data(self) -> dict:
+        return self._log_data
 
 def const_force(weight):
     # typical payload of a drone ranges from 0.2kg to 1kg
@@ -73,6 +83,8 @@ class Free(DisturbanceForce):
     def update_explicit_wrench(self, *args, **kwargs) -> None:
         self.f_explicit = np.zeros(3)
         self.t_explicit = np.zeros(3)
+        self._log("f_disturb", self.f_implicit + self.f_explicit)
+        self._log("torque_disturb", self.t_implicit + self.t_explicit)
 
     def get_implicit_wrench_derivatives(self, *args, **kwargs) -> np.ndarray:
         return np.zeros(3), np.zeros(3)
@@ -84,6 +96,8 @@ class AirDrag(DisturbanceForce):
     def update_explicit_wrench(self, t: float=0.0, v: np.ndarray=0.0) -> None:
         self.f_explicit = self.get_air_drag(v)
         self.t_explicit = np.zeros(3)
+        self._log("f_disturb", self.f_implicit + self.f_explicit)
+        self._log("torque_disturb", self.t_implicit + self.t_explicit)
 
     def get_implicit_wrench_derivatives(self, t: float=0.0, state: np.ndarray=np.zeros(13)) -> np.ndarray:
         return np.zeros(3), np.zeros(3)
@@ -159,15 +173,17 @@ class WallEffect(DisturbanceForce):
         self.f_explicit = -f*self.wall_norm
         t = self.get_c_q(d)*0.5*params.Environment.rho_air*rotor_spd**2*self.propeller.diameter**5
         self.t_explicit = t*np.array([0, 1, 0])
-    
-    
+        self._log("f_disturb", self.f_implicit + self.f_explicit)
+        self._log("torque_disturb", self.t_implicit + self.t_explicit)
+
+
 
 class WindEffectNearWall(DisturbanceForce):
     """This model integrates flow pass a vertical wall and the inflow model of propeller. It simulates wind velocity field around a wall and its impact on drone rotors.
     """
     def __init__(self, wall_origin=np.array([-0.5, 0, 0]), wall_norm=np.array([1, 0, 0]), wall_length=4.0, u_free=np.array([-5.0, 0.0, 0.0])) -> None:
         super().__init__()
-        self.propeller_force_table = propeller_lookup_table.PropellerLookupTable.Reader("p600_full_range")
+        self.propeller_force_table = propeller_lookup_table.PropellerLookupTable.Reader("p600_single_rotor_after_bemt_fit")
         # self.propeller_force_table = propeller_lookup_table.PropellerLookupTable.Reader("apc_8x6_with_trail_refine")
         self.wind_field_model = flow_pass_flat_plate.FlowPassFlatPlate.Interface(wall_norm, np.array([0.0, 0.0, 1.0]), wall_origin, wall_length)
         self.u_free_const = u_free    # in FLU inertial frame
@@ -178,6 +194,8 @@ class WindEffectNearWall(DisturbanceForce):
         self.t_propeller = np.zeros(3)  # force on propeller in FLU inertial frame
         self.f_body = np.zeros(3)  # force on drone body in FLU inertial frame
         self.is_sinusoidal_wind = False
+        self._log_data.update({"f_propeller": None, "f_body": None})
+        # rotor_{i}_rotation_spd_delayed keys added on first step_delayed_rotation_speed call
         print("is_sinusoidal_wind: ", self.is_sinusoidal_wind)
         
     def generate_sinusoidal_wind(self, t: float) -> None:
@@ -224,7 +242,10 @@ class WindEffectNearWall(DisturbanceForce):
 
         self.f_explicit = self.f_propeller + self.f_body*1.0  # add the force on drone body to the propeller force
         self.t_explicit = self.t_propeller
-
+        self._log("f_propeller", self.f_propeller)
+        self._log("f_body", self.f_body)
+        self._log("f_disturb", self.f_implicit + self.f_explicit)
+        self._log("torque_disturb", self.t_implicit + self.t_explicit)
 
     def blend_white_noise(self):
         """Blend the white noise to the force and torque
@@ -251,9 +272,16 @@ class WindEffectNearWall(DisturbanceForce):
             self.delayed_rotor_set_speed = []
             for rotor in rotor_set.rotors:
                 self.delayed_rotor_set_speed.append(rotor.rotation_speed)
+            for i in range(len(self.delayed_rotor_set_speed)):
+                self._log_data[f"rotor_{i}_rotation_spd_delayed"] = None
         else:
             for i, rotor in enumerate(rotor_set.rotors):
                 self.delayed_rotor_set_speed[i] = (1.0 - alpha) * rotor.rotation_speed + alpha * self.delayed_rotor_set_speed[i]
+        for i, spd in enumerate(self.delayed_rotor_set_speed):
+            self._log(f"rotor_{i}_rotation_spd_delayed", spd)
+
+    def get_log_data(self) -> dict:
+        return self._log_data
 
 
 class WallContact(DisturbanceForce):
@@ -264,13 +292,14 @@ class WallContact(DisturbanceForce):
         super().__init__()
         self.end_sponge = params.EndEffector()
         self.wall = wall
-        # the following is mocking wall effect, need to refactor to avoid this 
+        # the following is mocking wall effect, need to refactor to avoid this
         self.delayed_rotor_set_speed = [0, 0, 0, 0]  # only works for wind near wall disturbance
-        self.f_body = np.zeros(3)  
-        self.f_propeller = np.zeros(3)  
+        self.f_body = np.zeros(3)
+        self.f_propeller = np.zeros(3)
         self.f_contact_normal = np.zeros(3)
         self.f_contact_friction = np.zeros(3)
         self.tip_position_inertial_frame = np.zeros(3)
+        self._log_data.update({"f_contact_normal": None, "tip_position": None})
 
     def get_vertical_distance_wall_to_tip(self, state: dynamics_state.State):
         """Negative value means penetration into the wall"""
@@ -318,6 +347,10 @@ class WallContact(DisturbanceForce):
         f_sponge_contact = self.get_sponge_contact_force(p_wall_to_tip, v_contact_point_tangential)
         self.f_explicit = state.pose.T@(f_rigid_contact + f_sponge_contact)  # convert to body frame
         self.t_explicit = np.cross(self.end_sponge.tip_position, self.f_explicit)  # torque in body frame
+        self._log("f_disturb", self.f_implicit + self.f_explicit)
+        self._log("torque_disturb", self.t_implicit + self.t_explicit)
+        self._log("f_contact_normal", self.f_contact_normal)
+        self._log("tip_position", self.tip_position_inertial_frame)
         # debug
         # print(
         #     f"p_wall_to_tip: {p_wall_to_tip}, "
@@ -327,6 +360,9 @@ class WallContact(DisturbanceForce):
         #     f"t_explicit: {self.t_explicit}"
         # )
 
+    def get_log_data(self) -> dict:
+        return self._log_data
+
 class AggregatedDisturbance(DisturbanceForce):
     """This class is used to aggregate multiple disturbance forces. It is not a disturbance force itself.
     """
@@ -334,6 +370,11 @@ class AggregatedDisturbance(DisturbanceForce):
         super().__init__()
         self.wind_effect = WindEffectNearWall(wall_origin, wall_norm, wall_length, u_free)
         self.wall_contact = WallContact()
+        self._log_data.update({
+            "f_propeller": None, "f_body": None,
+            "f_contact_normal": None, "tip_position": None,
+        })
+        # rotor_{i}_rotation_spd_delayed keys added on first update_explicit_wrench call
 
     def update_explicit_wrench(self, t: float, state: dynamics_state.State, rotor_set: rotor.RotorSet, force_control, torque_control) -> None:
         self.wind_effect.update_explicit_wrench(t, state, rotor_set, force_control, torque_control)
@@ -342,7 +383,19 @@ class AggregatedDisturbance(DisturbanceForce):
         self.f_explicit = self.wind_effect.f_explicit + self.wall_contact.f_explicit
         self.t_explicit = self.wind_effect.t_explicit + self.wall_contact.t_explicit
 
-        self.delayed_rotor_set_speed = self.wind_effect.delayed_rotor_set_speed 
-        self.f_body = self.wind_effect.f_body 
-        self.f_propeller = self.wind_effect.f_propeller 
+        self.delayed_rotor_set_speed = self.wind_effect.delayed_rotor_set_speed
+        self.f_body = self.wind_effect.f_body
+        self.f_propeller = self.wind_effect.f_propeller
+        self._log("f_disturb", self.f_implicit + self.f_explicit)
+        self._log("torque_disturb", self.t_implicit + self.t_explicit)
+        self._log("f_propeller", self.f_propeller)
+        self._log("f_body", self.f_body)
+        self._log("f_contact_normal", self.wall_contact.f_contact_normal)
+        self._log("tip_position", self.wall_contact.tip_position_inertial_frame)
+        if self.delayed_rotor_set_speed is not None:
+            for i, spd in enumerate(self.delayed_rotor_set_speed):
+                self._log(f"rotor_{i}_rotation_spd_delayed", spd)
+
+    def get_log_data(self) -> dict:
+        return self._log_data
 

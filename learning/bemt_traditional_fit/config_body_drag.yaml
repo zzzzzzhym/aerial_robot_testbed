@@ -1,0 +1,25 @@
+# Body-drag-only fitting config
+# Aero coefficients are fixed from a prior single-rotor fit.
+# Decision variable: k_body_drag only (1-D problem).
+# Thrust computed via lookup table, so BET resolution settings are unused.
+
+model:
+  coarse_n_elements: 2
+  fine_n_elements: 20
+  coarse_n_rotation_segments: 6
+  fine_n_rotation_segments: 18
+  coarse_sample_distance: 50        # denser than full-vehicle: lookup table is fast
+  fine_sample_distance: 10
+
+seed:
+  n_lhs: 20         # 1-D problem needs far fewer LHS seeds than full 5-D fit
+  n_keep: 3
+  random_seed: 42
+
+solver:
+  coarse_maxiter: 30
+  fine_maxiter: 100
+  single_maxiter: 100
+  single_fine_maxiter: 200
+  ftol: 1.0e-5
+  xtol: 1.0e-4

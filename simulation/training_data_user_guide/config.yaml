@@ -1,0 +1,90 @@
+# Training-data generation config.
+#
+# All runtime logic lives in training_data_user_guide.py; this file only holds the
+# tuning variables that a user may want to change between runs.
+#
+# Pick which use case to run. One of: training | validation | fitting | fitting_validation
+selected_config: fitting
+
+# Controller tracking error margin added to every wall distance, to prevent
+# collision with the wall (meters).
+x_position_error: 0.0
+
+# After the run, also dump the logger column-index map (column_map.yaml) for reference.
+save_column_map: false
+
+# -----------------------------------------------------------------------------
+# Use-case definitions: ML data for training or validation, and data for pure fitting.
+#
+# Each config has:
+#   t_data_collection   : simulated seconds to collect per condition
+#   file_name_template   : output name, formatted with (wind_x, wind_y, wind_z, wall_distance)
+#   wall_distance_range  : list of wall distances (m). Use a large value to simulate "no wall".
+#   is_csv               : true -> save .csv, false -> save .pkl
+#   trajectory           : drone.trajectory class name + constructor args
+#   wind_conditions      : how to enumerate (x, y, z) free-wind tuples; see styles below
+#
+# wind_conditions styles:
+#   grid  : cartesian product of the x / y / z lists
+#   polar : x horizontal (always negative), z vertical, from magnitude + pitch angle
+#           -> (-mag*cos(pitch), 0.0, mag*sin(pitch))
+# -----------------------------------------------------------------------------
+configs:
+  training:
+    t_data_collection: 20.0
+    file_name_template: "test_wind_near_wall_x{}_y{}_z{}_d{}_train_no_bemt"
+    # In a constrained space the wall distance naturally varies, so a single value is enough.
+    # A large value (100) is used to simulate "no wall".
+    wall_distance_range: [100]
+    is_csv: true
+    # Use the same trajectory in every condition (same setting as the Neural Fly paper).
+    # RandomWaypointsInConstrainedSpace flies in a constrained 3D space in front of a wall.
+    trajectory:
+      type: RandomWaypointsInConstrainedSpace
+      args: [200, false]
+    wind_conditions:
+      style: grid
+      x: [-3.0, -1.0, 0.0]
+      y: [0.0]
+      z: [-5.0, -3.0, 0.0, 3.0, 5.0]
+
+  validation:
+    t_data_collection: 10.0
+    file_name_template: "test_wind_near_wall_x{}_y{}_z{}_d{}_validation_no_bemt"
+    wall_distance_range: [0.5]
+    is_csv: true
+    trajectory:
+      type: Figure8
+      args: [20]
+    wind_conditions:
+      style: grid
+      x: [-2.0, 0.0]
+      y: [0.0]
+      z: [-4.0, -1.0, 1.0, 4.0]
+
+  fitting:
+    t_data_collection: 15.0
+    file_name_template: "test_wind_near_wall_x{}_y{}_z{}_d{}_fitting"
+    wall_distance_range: [100.0]   # treat as no wall
+    is_csv: true
+    trajectory:
+      type: RandomWaypointsInConstrainedSpace
+      args: [200, false]
+    wind_conditions:
+      style: polar
+      magnitudes: [3.0, 5.0]
+      pitch_angles_deg: [0.0, 30.0, -30.0, 60.0, -60.0, 90.0, -90.0]
+
+  fitting_validation:
+    t_data_collection: 40.0
+    file_name_template: "test_wind_near_wall_x{}_y{}_z{}_d{}_validation"
+    wall_distance_range: [0.1]
+    is_csv: true
+    trajectory:
+      type: Figure8
+      args: [20]
+    wind_conditions:
+      style: grid
+      x: [-10.0, -8.0, -5.0, -2.0, 0.0]
+      y: [0.0]
+      z: [0.0]

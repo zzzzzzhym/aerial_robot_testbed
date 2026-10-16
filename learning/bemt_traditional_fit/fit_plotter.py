@@ -1,3 +1,4 @@
+import numpy as np
 import matplotlib.pyplot as plt
 
 import data_factory
@@ -30,6 +31,10 @@ class FitPlotter:
             r_disk = dataset.shared_r_disk[i]
             if is_using_lookup_table:
                 f_total_inertial = model.compute_total_force_inertial_frame_with_lookup_table(dataset, i, lookup_table)
+                v_i_avg = model.compute_average_v_i(dataset, i, lookup_table)
+                u_free_avg = (dataset.u_free_0[i] + dataset.u_free_1[i] + dataset.u_free_2[i] + dataset.u_free_3[i]) / 4
+                f_body_drag = model.compute_body_drag_force(v_i_avg, u_free_avg, r_disk, dataset.v_body[i])
+                f_total_inertial = f_total_inertial - f_body_drag
                 # Per-rotor forces in body frame (convert from inertial)
                 f0 = r_disk.T @ BemtModel.compute_thrust_with_lookup_table(dataset.u_free_0[i], dataset.v_forward_0[i], r_disk, dataset.omega_0[i], model.params.is_ccw_blade[0], lookup_table)
                 f1 = r_disk.T @ BemtModel.compute_thrust_with_lookup_table(dataset.u_free_1[i], dataset.v_forward_1[i], r_disk, dataset.omega_1[i], model.params.is_ccw_blade[1], lookup_table)
@@ -83,3 +88,176 @@ class FitPlotter:
             ax.legend()
 
         return fig0, fig1
+
+    @staticmethod
+    def print_wind_at_sample(dataset: data_factory.FittingDataset, i: int):
+        """Print sensed and background wind velocity for rotor 0 at the given sample index."""
+        print(f"Sample index: {i}")
+        bg = dataset.u_free_0[i]
+        print(f"  Rotor 0 background wind: [{bg[0]:+.3f}, {bg[1]:+.3f}, {bg[2]:+.3f}] m/s  |v|={np.linalg.norm(bg):.3f}")
+        if dataset.rotor_0_sensed_wind_velocity is not None:
+            sensed = dataset.rotor_0_sensed_wind_velocity[i]
+            print(f"  Rotor 0 sensed wind:     [{sensed[0]:+.3f}, {sensed[1]:+.3f}, {sensed[2]:+.3f}] m/s  |v|={np.linalg.norm(sensed):.3f}")
+        else:
+            print("  Rotor 0 sensed wind: not available in this dataset")
+
+    @staticmethod
+    def plot_single_rotor_fit(model, datasets, lookup_table, sample_step: int = 1,
+                               x_axis: str = 'omega'):
+        """Plot BET-predicted vs measured force for rotor 0 in disk frame.
+
+        Args:
+            model: fitted single-rotor model
+            datasets: list of FittingDataset objects; each is labeled by its list index
+            lookup_table: PropellerLookupTable used for LT-based predictions
+            sample_step: stride for selecting samples
+            x_axis: 'omega' (default, rotor rotational speed) or 'sample_index'
+
+        Returns:
+            per_figs: list of per-dataset figures (BET wind, LT wind, LT no wind, measured)
+            fig_all: combined figure with all datasets' measured forces overlaid
+        """
+        axis_labels = ["Force X (disk)", "Force Y (disk)", "Force Z (disk)"]
+        x_label = "Omega [rad/s]" if x_axis == 'omega' else "Sample Index"
+
+        all_measured = []
+        per_figs = []
+
+        for idx, dataset in enumerate(datasets):
+            label = str(idx)
+            sample_indices = list(range(0, len(dataset), sample_step))
+
+            bet_wind = []
+            lt_wind = []
+            lt_no_wind = []
+            measured = []
+            x_vals = []
+
+            for i in sample_indices:
+                r_disk = dataset.shared_r_disk[i]
+                omega = dataset.omega_0[i]
+
+                f_bet_wind = model.compute_rotor0_thrust(
+                    dataset.rotor_0_sensed_wind_velocity[i],
+                    r_disk,
+                    omega,
+                )
+                f_lt_wind_inertial, _ = lookup_table.get_rotor_forces(
+                    dataset.u_free_0[i],
+                    dataset.v_forward_0[i],
+                    r_disk, omega, model.is_ccw_rotor0,
+                )
+                f_lt_no_wind_inertial, _ = lookup_table.get_rotor_forces(
+                    np.zeros(3), np.zeros(3), r_disk, omega, model.is_ccw_rotor0,
+                )
+                f_meas = r_disk.T @ dataset.rotor_0_f_rotor_inertial_frame[i]
+
+                bet_wind.append(f_bet_wind)
+                lt_wind.append(r_disk.T @ f_lt_wind_inertial)
+                lt_no_wind.append(r_disk.T @ f_lt_no_wind_inertial)
+                measured.append(f_meas)
+                x_vals.append(omega if x_axis == 'omega' else i)
+
+            all_measured.append((x_vals, measured, label))
+
+            fig, axs = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
+            fig.suptitle(f"Dataset {label}")
+            for j in range(3):
+                axs[j].plot(x_vals, [f[j] for f in bet_wind],
+                            label="BET (wind)", linestyle="None", marker=".")
+                axs[j].plot(x_vals, [f[j] for f in lt_wind],
+                            label="LT (wind)", linestyle="None", marker="x")
+                axs[j].plot(x_vals, [f[j] for f in lt_no_wind],
+                            label="LT (no wind)", linestyle="None", marker="s")
+                axs[j].plot(x_vals, [f[j] for f in measured],
+                            label="measured", linestyle="None", marker="^")
+                axs[j].set_ylabel(axis_labels[j])
+                axs[j].legend()
+            axs[2].set_xlabel(x_label)
+            fig.tight_layout()
+            per_figs.append(fig)
+
+        fig_all, axs_all = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
+        fig_all.suptitle("All measured forces")
+        for x_vals, measured, label in all_measured:
+            for j in range(3):
+                axs_all[j].plot(x_vals, [f[j] for f in measured],
+                                label=label, linestyle="None", marker=".")
+        for j in range(3):
+            axs_all[j].set_ylabel(axis_labels[j])
+            axs_all[j].legend()
+        axs_all[2].set_xlabel(x_label)
+        fig_all.tight_layout()
+
+        return per_figs, fig_all
+
+    @staticmethod
+    def plot_v_i_comparison(model, datasets, lookup_table, sample_step: int = 1,
+                             x_axis: str = 'omega'):
+        """Plot v_i from lookup table vs measured v_z (sensed - background) for rotor 0.
+
+        Args:
+            model: fitted single-rotor model
+            datasets: list of FittingDataset objects; each labeled by its list index
+            lookup_table: PropellerLookupTable used to compute v_i
+            sample_step: stride for selecting samples
+            x_axis: 'omega' (default, rotor rotational speed) or 'sample_index'
+
+        Returns:
+            fig: overlay of v_i LT and measured v_z for all datasets
+            fig_all: combined figure of all datasets' measured v_z only
+        """
+        x_label = "Omega [rad/s]" if x_axis == 'omega' else "Sample Index"
+
+        all_v_z = []
+        per_figs = []
+
+        for idx, dataset in enumerate(datasets):
+            if dataset.rotor_0_sensed_wind_velocity is None:
+                print(f"Dataset {idx}: rotor_0_sensed_wind_velocity not available, skipping")
+                continue
+
+            label = str(idx)
+            sample_indices = list(range(0, len(dataset), sample_step))
+
+            v_i_lt = []
+            v_i_measured = []
+            v_z_sensed = []
+            x_vals = []
+
+            for i in sample_indices:
+                r_disk = dataset.shared_r_disk[i]
+                omega = dataset.omega_0[i]
+
+                _, v_i_inertial = lookup_table.get_rotor_forces(
+                    dataset.u_free_0[i], dataset.v_forward_0[i], r_disk, omega, model.is_ccw_rotor0
+                )
+                v_i_lt.append((r_disk.T @ v_i_inertial)[2])
+
+                sensed = dataset.rotor_0_sensed_wind_velocity[i]
+                v_i_measured.append((r_disk.T @ (sensed - dataset.u_free_0[i]))[2])
+                v_z_sensed.append((r_disk.T @ sensed)[2])
+
+                x_vals.append(omega if x_axis == 'omega' else i)
+
+            all_v_z.append((x_vals, v_z_sensed, label))
+
+            fig, ax = plt.subplots(figsize=(12, 4))
+            fig.suptitle(f"Dataset {label}")
+            ax.plot(x_vals, v_i_lt, label="v_i LT", linestyle="None", marker=".")
+            ax.plot(x_vals, v_i_measured, label="v_i measured", linestyle="None", marker="x")
+            ax.set_xlabel(x_label)
+            ax.set_ylabel("v_i disk-z [m/s]")
+            ax.legend()
+            fig.tight_layout()
+            per_figs.append(fig)
+
+        fig_all, ax_all = plt.subplots(figsize=(12, 4))
+        for x_vals, v_z_sensed, label in all_v_z:
+            ax_all.plot(x_vals, v_z_sensed, label=label, linestyle="None", marker=".")
+        ax_all.set_xlabel(x_label)
+        ax_all.set_ylabel("v_z sensed [m/s]")
+        ax_all.legend()
+        fig_all.tight_layout()
+
+        return per_figs, fig_all

@@ -31,6 +31,15 @@ class TrajectoryReference:
     def step_reference_state(self) -> None:
         raise NotImplementedError("Method needed for trajectory")
 
+    def get_log_data(self) -> dict:
+        return {
+            "x_d":      self.x_d.copy(),
+            "v_d":      self.v_d.copy(),
+            "x_d_dot2": self.x_d_dot2.copy(),
+            "x_d_dot3": self.x_d_dot3.copy(),
+            "b_1d":     self.b_1d.copy(),
+        }
+
 class RandomWaypoints(TrajectoryReference):
     """Generates a trajectory with random waypoints. This class calls trajectory_generation package as a tool. 
 

@@ -1,5 +1,5 @@
 import numpy as np
-    
+
 import drone.dynamics_state
 import drone.rotor
 
@@ -49,15 +49,15 @@ class ControllerOutput:
 
 class SensorData(DynamicsOutput):
     """Container for all sensor data, follow FLU convention."""
-    def __init__(self, 
-                 position: np.ndarray, 
+    def __init__(self,
+                 position: np.ndarray,
                  v: np.ndarray,
-                 pose: np.ndarray, 
+                 pose: np.ndarray,
                  omega: np.ndarray,
                  v_dot: np.ndarray,
                  rotors: drone.rotor.RotorSet,
                  omega_dot: np.ndarray) -> None:
-        
+
         # does not have difference with DynamicsOutput for now
         super().__init__(position, v, pose, omega, v_dot, rotors, omega_dot)
 

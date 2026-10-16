@@ -13,8 +13,7 @@ class SingleRotorObjective:
         self.model = model
 
     def get_loss(self, x, datasets: list[data_factory.FittingDataset]) -> float:
-        self.model.blade.cl_1, self.model.blade.cl_2, self.model.blade.cd, self.model.blade.alpha_0 = x[:4]
-        self.model.bet_instance.refresh_blade()
+        self.model.apply_params(x)
 
         loss = 0.0
         for dataset in datasets:
