@@ -37,10 +37,16 @@ class MultiSeedGenerator(SeedGenerator):
 
 
 class SingleSeedGenerator(SeedGenerator):
-    """Single fixed initial guess; passes it directly to the solver without screening."""
+    """Single fixed initial guess; passes it directly to the solver without screening.
 
-    def __init__(self, initial_guess):
+    free_indices optionally restricts the optimization to a subset of the decision
+    vector: only those search-space components are varied, the rest are held at the
+    seed. None means every component is free (ordinary single-start fit).
+    """
+
+    def __init__(self, initial_guess, free_indices=None):
         self.initial_guess = np.array(initial_guess, dtype=float)
+        self.free_indices = free_indices
 
     def get_seeds(self, bounds) -> np.ndarray:
         return self.initial_guess.reshape(1, -1)

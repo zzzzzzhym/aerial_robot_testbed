@@ -44,16 +44,17 @@ class TestFittingManagerForFullVehicle(unittest.TestCase):
         fake_result = np.zeros(5)
         with patch.object(manager.engine, 'fit', return_value=fake_result) as mock_fit:
             result = manager.run(is_multiseed=True)
-        mock_fit.assert_called_once_with(self.datasets, custom_init=None)
+        mock_fit.assert_called_once_with(manager.seed_gen, self.datasets)
         self.assertIs(result, fake_result)
 
-    def test_run_multiseed_passes_init_guess(self):
-        guess = [5.0, 2.0, 2.0, 0.4, 0.0]
+    def test_run_multiseed_passes_init_guess_via_seed_gen(self):
+        guess = [5.0, 2.0, 2.0, np.radians(20.0), 0.0]
         manager = FittingManager.for_full_vehicle(self.blade, self.params, self.datasets, init_guess=guess)
-        with patch.object(manager.engine, 'fit', return_value=np.zeros(5)) as mock_fit:
+        with patch.object(manager.engine, 'fit', return_value=np.zeros(5)):
             manager.run(is_multiseed=True)
-        _, kwargs = mock_fit.call_args
-        np.testing.assert_array_equal(kwargs['custom_init'], guess)
+        # init_guess (physical) is pushed onto the seed generator in search space.
+        expected = manager.engine.decision_var.to_search(np.asarray(guess, dtype=float))
+        np.testing.assert_array_almost_equal(manager.seed_gen.physical_seed, expected)
 
     def test_run_single_delegates_to_engine_fit_single(self):
         guess = [5.0, 2.0, 2.0, 0.4, 0.0]
@@ -62,7 +63,7 @@ class TestFittingManagerForFullVehicle(unittest.TestCase):
         with patch.object(manager.engine, 'fit_single', return_value=fake_result) as mock_fit_single:
             result = manager.run(is_multiseed=False, is_fine_tune=True)
         args, kwargs = mock_fit_single.call_args
-        self.assertIs(args[0], self.datasets)
+        self.assertIs(args[1], self.datasets)
         self.assertTrue(kwargs.get('is_fine_tune'))
         self.assertIs(result, fake_result)
 
@@ -71,7 +72,7 @@ class TestFittingManagerForFullVehicle(unittest.TestCase):
         manager = FittingManager.for_full_vehicle(self.blade, self.params, self.datasets, init_guess=guess)
         with patch.object(manager.engine, 'fit_single', return_value=np.zeros(5)) as mock_fit_single:
             manager.run(is_multiseed=False)
-        seed_gen = mock_fit_single.call_args[1]['seed_generator']
+        seed_gen = mock_fit_single.call_args[0][0]
         seeds = seed_gen.get_seeds(None)
         np.testing.assert_array_equal(seeds[0], guess)
 
@@ -126,7 +127,7 @@ class TestFittingManagerForSingleRotor(unittest.TestCase):
         fake_result = np.zeros(4)
         with patch.object(manager.engine, 'fit', return_value=fake_result) as mock_fit:
             result = manager.run(is_multiseed=True)
-        mock_fit.assert_called_once_with(self.datasets, custom_init=None)
+        mock_fit.assert_called_once_with(manager.seed_gen, self.datasets)
         self.assertIs(result, fake_result)
 
 

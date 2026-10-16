@@ -18,7 +18,7 @@ seed:
 solver:
   coarse_maxiter: 100       # max iterations, coarse stage
   fine_maxiter: 100        # max iterations, fine stage
-  single_maxiter: 100      # max iterations, single-seed run
-  single_fine_maxiter: 100 # max iterations, single-seed fine-tune run
+  single_maxiter: 50       # max iterations, single-seed (coarse) run; staged fit uses this as the stage-1.5 BEMT base-refine budget
+  single_fine_maxiter: 100 # max iterations, single-seed fine-tune run; staged fit uses this for the stage-2 offset fit
   ftol: 1.0e-2             # function value tolerance for convergence
   xtol: 1.0e-3             # parameter value tolerance for convergence

@@ -170,7 +170,7 @@ class TestFittingManagerForBodyDrag(unittest.TestCase):
         fake_result = np.array([1.5])
         with patch.object(manager.engine, 'fit', return_value=fake_result) as mock_fit:
             result = manager.run(is_multiseed=True)
-        mock_fit.assert_called_once_with(self.datasets, custom_init=None)
+        mock_fit.assert_called_once_with(manager.seed_gen, self.datasets)
         self.assertIs(result, fake_result)
 
 

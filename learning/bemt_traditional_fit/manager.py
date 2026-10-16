@@ -20,16 +20,19 @@ from learning.bemt_traditional_fit import decision_var as dv
 _CONFIG_DIR = Path(__file__).parent
 
 
+def _build_seed_gen(config: FittingConfig) -> MultiSeedGenerator:
+    sc = config.seed
+    return MultiSeedGenerator(n_lhs=sc.n_lhs, n_keep=sc.n_keep, random_seed=sc.random_seed)
+
+
 def _build_engine(model, objective, decision_var, config: FittingConfig) -> FittingEngine:
     bounds = decision_var.bounds
-    sc = config.seed
     sv = config.solver
-    seed_gen = MultiSeedGenerator(n_lhs=sc.n_lhs, n_keep=sc.n_keep, random_seed=sc.random_seed)
     coarse_solver = Solver(bounds, maxiter=sv.coarse_maxiter, options={'ftol': sv.ftol, 'xtol': sv.xtol, 'disp': True})
     fine_solver = Solver(bounds, maxiter=sv.fine_maxiter, options={'ftol': sv.ftol, 'xtol': sv.xtol, 'disp': True})
     single_solver = Solver(bounds, maxiter=sv.single_maxiter, options={'disp': True, 'fatol': 1e-1})
     single_fine_solver = Solver(bounds, maxiter=sv.single_fine_maxiter, options={'disp': True, 'fatol': 1e-1})
-    return FittingEngine(model, objective, decision_var, seed_gen, coarse_solver, fine_solver, single_solver, single_fine_solver)
+    return FittingEngine(model, objective, decision_var, coarse_solver, fine_solver, single_solver, single_fine_solver)
 
 
 class FittingManager:
@@ -41,10 +44,11 @@ class FittingManager:
     """
 
     def __init__(self, model, engine, datasets: list[data_factory.FittingDataset],
-                 init_guess=None):
+                 init_guess=None, seed_gen: MultiSeedGenerator = None):
         self.model = model
         self.engine = engine
         self.datasets = datasets
+        self.seed_gen = seed_gen
         self.init_guess = (
             np.asarray(init_guess, dtype=float) if init_guess is not None else None
         )
@@ -57,7 +61,7 @@ class FittingManager:
         model = BemtModel(blade, params, model_config=config.model)
         objective = FittingObjective(model)
         engine = _build_engine(model, objective, dv.full_vehicle(), config)
-        return cls(model, engine, datasets, init_guess)
+        return cls(model, engine, datasets, init_guess, seed_gen=_build_seed_gen(config))
 
     @classmethod
     def for_body_drag(cls, blade, params, datasets: list[data_factory.FittingDataset],
@@ -80,7 +84,7 @@ class FittingManager:
         model.configure_for_body_drag_fit()
         objective = BodyDragObjective(model, lookup_table)
         engine = _build_engine(model, objective, dv.body_drag(), config)
-        return cls(model, engine, datasets, init_guess)
+        return cls(model, engine, datasets, init_guess, seed_gen=_build_seed_gen(config))
 
     @classmethod
     def for_single_rotor(cls, blade, is_ccw_rotor0: bool,
@@ -91,7 +95,7 @@ class FittingManager:
         model = SingleRotorBemtModel(blade, is_ccw_rotor0, model_config=config.model)
         objective = SingleRotorObjective(model)
         engine = _build_engine(model, objective, dv.OffsetAugmentedAeroCoeffDecisionVar(), config)
-        return cls(model, engine, datasets, init_guess)
+        return cls(model, engine, datasets, init_guess, seed_gen=_build_seed_gen(config))
 
     @classmethod
     def for_single_rotor_band_correction(cls, blade, is_ccw_rotor0: bool,
@@ -110,7 +114,7 @@ class FittingManager:
         model.configure_for_band_correction_fit(decision_var.cl_knots, decision_var.cd_knots)
         objective = SingleRotorObjective(model)
         engine = _build_engine(model, objective, decision_var, config)
-        return cls(model, engine, datasets, init_guess)
+        return cls(model, engine, datasets, init_guess, seed_gen=_build_seed_gen(config))
 
     @classmethod
     def for_quadratic_rotor(cls, datasets: list[data_factory.FittingDataset],
@@ -130,6 +134,74 @@ class FittingManager:
         return cls(model, engine, datasets)
 
     @classmethod
+    def for_single_rotor_staged(cls, blade, is_ccw_rotor0: bool,
+                                datasets: list[data_factory.FittingDataset], init_guess=None,
+                                config: FittingConfig = None):
+        """Staged single-rotor fit that limits the decision variables per stage (goal 0).
+
+        One SingleRotorBemtModel is reconfigured across three stages so the number of
+        free parameters stays small in each:
+
+          Stage 1   — BET with measured (sensed-wind) v_i; global multi-start over the
+                      six base aero coefficients; CL/CD correction offsets held at 0.
+          Stage 1.5 — BEMT with root-found v_i; refine the same six base coefficients
+                      with the coarse single solver (single_* in config).
+          Stage 2   — BEMT with root-found v_i; freeze the base coefficients and vary
+                      only the CL/CD correction offsets with the fine single solver.
+
+        All iteration budgets / resolutions come from the config; stage 1.5 uses the
+        single_* solver (its maxiter is the "fine-tune N steps" budget) and stage 2 the
+        single_fine_* solver.  Run with run_staged(); returns the band-correction vector.
+        """
+        config = config or FittingConfig.from_yaml(_CONFIG_DIR / "config_single_rotor.yaml")
+        model = SingleRotorBemtModel(blade, is_ccw_rotor0, model_config=config.model)
+        manager = cls(model, engine=None, datasets=datasets, init_guess=init_guess)
+        manager._config = config
+        return manager
+
+    def run_staged(self):
+        """Execute the three-stage single-rotor fit (see for_single_rotor_staged)."""
+        if getattr(self, "_config", None) is None:
+            raise RuntimeError("run_staged() requires a manager built via for_single_rotor_staged.")
+        model = self.model
+        datasets = self.datasets
+        config = self._config
+        base_dv = dv.OffsetAugmentedAeroCoeffDecisionVar()
+        n_base = len(base_dv.search_names)
+
+        # Stage 1: BET (measured v_i) — global multi-start over the six base coefficients.
+        print("\n===== Stage 1: BET global fit (base aero coefficients) =====")
+        model.use_bemt = False
+        base_engine = _build_engine(model, SingleRotorObjective(model), base_dv, config)
+        seed_gen = _build_seed_gen(config)
+        seed_gen.physical_seed = (
+            base_dv.to_search(self.init_guess) if self.init_guess is not None else None
+        )
+        physical_base = base_engine.fit(seed_gen, datasets)
+
+        # Stage 1.5: BEMT (root-found v_i) — refine the same six coefficients.
+        print("\n===== Stage 1.5: BEMT refine (base coefficients) =====")
+        model.use_bemt = True
+        physical_base = base_engine.fit_single(
+            SingleSeedGenerator(physical_base), datasets, is_fine_tune=False,
+        )
+
+        # Stage 2: BEMT (root-found v_i) — freeze base coefficients, fit only the offsets.
+        print("\n===== Stage 2: BEMT fine-tune (CL/CD correction offsets only) =====")
+        band_dv = dv.BandCorrectedDecisionVar()
+        model.configure_for_band_correction_fit(band_dv.cl_knots, band_dv.cd_knots)
+        band_engine = _build_engine(model, SingleRotorObjective(model), band_dv, config)
+        n_offsets = len(band_dv.search_names) - n_base
+        seed_physical = np.concatenate([physical_base, np.zeros(n_offsets)])
+        offset_indices = range(n_base, len(band_dv.search_names))
+        physical = band_engine.fit_single(
+            SingleSeedGenerator(seed_physical, free_indices=offset_indices),
+            datasets, is_fine_tune=True,
+        )
+        self.engine = band_engine
+        return physical
+
+    @classmethod
     def for_single_rotor_bemt(cls, blade, is_ccw_rotor0: bool,
                               datasets: list[data_factory.FittingDataset], init_guess=None,
                               config: FittingConfig = None):
@@ -145,7 +217,7 @@ class FittingManager:
         model.use_bemt = True
         objective = SingleRotorObjective(model)
         engine = _build_engine(model, objective, dv.OffsetAugmentedAeroCoeffDecisionVar(), config)
-        return cls(model, engine, datasets, init_guess)
+        return cls(model, engine, datasets, init_guess, seed_gen=_build_seed_gen(config))
 
     def run(self, is_multiseed: bool = True, is_fine_tune: bool = False):
         """Run fitting.
@@ -156,12 +228,18 @@ class FittingManager:
             is_fine_tune: only relevant when is_multiseed=False; selects BET resolution.
         """
         if is_multiseed:
-            return self.engine.fit(self.datasets, custom_init=self.init_guess)
+            if self.seed_gen is None:
+                raise RuntimeError("multiseed run requires a seed generator; use a factory method.")
+            self.seed_gen.physical_seed = (
+                self.engine.decision_var.to_search(self.init_guess)
+                if self.init_guess is not None else None
+            )
+            return self.engine.fit(self.seed_gen, self.datasets)
 
         if self.init_guess is None:
             raise ValueError("init_guess is required for single-seed fitting")
         seed_gen = SingleSeedGenerator(self.init_guess.tolist())
-        return self.engine.fit_single(self.datasets, seed_generator=seed_gen, is_fine_tune=is_fine_tune)
+        return self.engine.fit_single(seed_gen, self.datasets, is_fine_tune=is_fine_tune)
 
     def run_quadratic_fit(self) -> list[PerConditionResult]:
         """Fit one quadratic profile per wind condition by handing the datasets to the engine.
