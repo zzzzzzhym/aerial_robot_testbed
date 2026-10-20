@@ -1,15 +1,13 @@
 """Generate training data for the drone flying in the y-z plane at various wall distances.
 
-This is the script form of ``simulation/training_data_user_guide.ipynb``. All logic
-lives here; tuning variables live in ``config.yaml`` next to this file. Run it from the
-command line (the integrated project is less unstable from the command line than from a
-notebook):
+Tuning variables live in ``config.yaml`` next to this file. Run from the command line
+(the integrated project is more stable than running it inside a notebook):
 
     python training_data_user_guide.py                 # uses config.yaml
     python training_data_user_guide.py --config training
     python training_data_user_guide.py --config-file my_config.yaml
 
-Notes (from the original user guide):
+Notes:
 - Turning off the disturbance observer is not a requirement. Any given controller output
   can correspond to a disturbance force.
 - Run the scenario in ``simulation_user_guide.ipynb`` first to make sure the drone does
@@ -40,10 +38,13 @@ for _p in (_SIM_DIR, _ROOT_DIR):
         sys.path.append(_p)
 
 import manager
+import common_utils.file_manager
 import drone.disturbance_model
 import drone.trajectory
 
-DEFAULT_CONFIG_FILE = os.path.join(_THIS_DIR, "config.yaml")
+DEFAULT_CONFIG_FILE = common_utils.file_manager.find_path_to_folder(
+    ["simulation", "training_data_user_guide", "config.yaml"]
+)
 
 
 def extra_format(value):

@@ -1,10 +1,7 @@
-# Training-data generation config.
-#
-# All runtime logic lives in training_data_user_guide.py; this file only holds the
-# tuning variables that a user may want to change between runs.
+# Training-data generation config: tuning variables for training_data_user_guide.py.
 #
 # Pick which use case to run. One of: training | validation | fitting | fitting_validation
-selected_config: fitting
+selected_config: training
 
 # Controller tracking error margin added to every wall distance, to prevent
 # collision with the wall (meters).
@@ -35,7 +32,7 @@ configs:
     file_name_template: "test_wind_near_wall_x{}_y{}_z{}_d{}_train_no_bemt"
     # In a constrained space the wall distance naturally varies, so a single value is enough.
     # A large value (100) is used to simulate "no wall".
-    wall_distance_range: [100]
+    wall_distance_range: [0.5]
     is_csv: true
     # Use the same trajectory in every condition (same setting as the Neural Fly paper).
     # RandomWaypointsInConstrainedSpace flies in a constrained 3D space in front of a wall.
@@ -44,7 +41,7 @@ configs:
       args: [200, false]
     wind_conditions:
       style: grid
-      x: [-3.0, -1.0, 0.0]
+      x: [-3.0,0.0]
       y: [0.0]
       z: [-5.0, -3.0, 0.0, 3.0, 5.0]
 

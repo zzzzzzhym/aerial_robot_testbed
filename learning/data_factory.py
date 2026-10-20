@@ -341,26 +341,41 @@ class TrainingDataFactory(DataFactory):
         return input_normalization, label_normalization
     
     def normalize_data(self, data_menu: list) -> None:
-        """Normalize the data using the mean and standard deviation"""
+        """Accumulate per-feature mean/variance over every dataset in the menu.
+        Each column of the loaded data is fed to its own Normalization accumulator so that
+        every feature gets its own mean/scale (not one global value shared by all features)."""
         # traverse the datasets
         for file in data_menu:
-            input_data, label_data = TrainingDataFactory.load_sim_data(file)
-            for column in self.input_headers:
-                self.input_normalization[column].add_batch(input_data)
-            for column in self.label_headers:
-                self.label_normalization[column].add_batch(label_data)
+            input_data, label_data = self.load_sim_data(file)
+            for col_index, column in enumerate(self.input_headers):
+                self.input_normalization[column].add_batch(input_data[:, col_index])
+            for col_index, column in enumerate(self.label_headers):
+                self.label_normalization[column].add_batch(label_data[:, col_index])
 
     def generate_normalization_params_file(self, output_path: str) -> None:
-        """Generate the normalization parameters for input and output"""
-        content = {"input": {}, "output": {}}
-        for column in self.input_headers:
-            mean, scale = self.input_normalization[column].get_normalization_params()
-            content["input"][column] = {"mean": mean, "scale": scale}
-        for column in self.label_headers:
-            mean, scale = self.label_normalization[column].get_normalization_params()
-            content["output"][column] = {"mean": mean, "scale": scale}
+        """Generate the normalization parameters file in the nested
+        field -> dim -> {mean, scale} structure expected by make_normalization_params
+        (the same structure used by the hand-written normalization_params.yaml files)."""
+        content = {"input": {}, "label": {}}
+        self._fill_normalization_section(content["input"], self.input_label_map["input"], self.input_normalization)
+        self._fill_normalization_section(content["label"], self.input_label_map["label"], self.label_normalization)
         with open(output_path, 'w') as file:
             yaml.dump(content, file)
+
+    @staticmethod
+    def _fill_normalization_section(section: dict, field_map: dict, normalization: dict) -> None:
+        """Populate one (input/label) section with per-field normalization params.
+        The Normalization accumulators are keyed by the flattened header names produced by
+        extract_header_from_input_label_map (``field`` for scalars, ``field_dim`` otherwise)."""
+        for field, dimensions in field_map.items():
+            if dimensions is None:  # 1D data (no dimension info in the yaml)
+                mean, scale = normalization[field].get_normalization_params()
+                section[field] = {"mean": mean, "scale": scale}
+            else:
+                section[field] = {}
+                for dim in dimensions:
+                    mean, scale = normalization[f"{field}_{dim}"].get_normalization_params()
+                    section[field][dim] = {"mean": mean, "scale": scale}
 
     def make_normalization_params(self, data_menu: list) -> None:
         # if the normalization params file is not generated, generate it
