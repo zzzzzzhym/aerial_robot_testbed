@@ -8,6 +8,9 @@ class DataFactoryArtifacts:
         # simple specific
         self.datasets = None
         self.loaderset = None
+        # sequence specific
+        self.train_loader = None  # pooled DataLoader over all windows for full-minibatch training
+        self.window = None        # number of stacked time frames per sample
         # common
         self.dim_of_input = None 
         self.dim_of_label = None 
@@ -23,7 +26,9 @@ class ModelFactoryArtifacts:
         self.phi_net = None
         self.h_net = None
         # simple specific
-        self.simple_net = None    
+        self.simple_net = None
+        # sequence specific
+        self.sequence_net = None
         # rotor net specific
         self.rotor_net = None
         # common

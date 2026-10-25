@@ -36,12 +36,13 @@ class Evaluator:
         return rms_per_dim
 
     def get_zero_prediction_mse(self):
-        """MSE if model output is zero"""
+        """Physical-unit MSE of outputting zero disturbance (matches the physical-unit error
+        reported by evaluate_model, so the two are comparable in test_model)."""
         mse = []
         for dataset in self.datasets:
-            groundtruth = torch.tensor(dataset.output)
-            mse_per_dataset = self.get_mse_per_label(groundtruth)
-            mse.append(mse_per_dataset)
+            denormalized_groundtruth = Evaluator.denormalize(
+                dataset.output, dataset.label_mean_vector, dataset.label_scale_vector)
+            mse.append(self.get_mse_per_label(denormalized_groundtruth))
         return mse
 
     def plot_rms_grouped_by_dimension(self, rms_list):
@@ -201,12 +202,6 @@ class DaimlEvaluator(Evaluator):
                 # a[-1,:] = 0  # last row is bias row, do not use
 
                 prediction = self.get_prediction(phi_out, a)
-                error = groundtruth - prediction
-                denormalized_error = Evaluator.denormalize(
-                    error.numpy(),
-                    dataset.label_mean_vector,
-                    dataset.label_scale_vector
-                )
                 denormalized_groundtruth = Evaluator.denormalize(
                     groundtruth.numpy(),
                     dataset.label_mean_vector,
@@ -217,6 +212,10 @@ class DaimlEvaluator(Evaluator):
                     dataset.label_mean_vector,
                     dataset.label_scale_vector
                 )
+                # Denormalize ground truth and prediction separately, then subtract, so the
+                # label mean cancels. (denormalize() adds the mean; applying it to the residual
+                # directly would add the label mean to every error and inflate the RMSE.)
+                denormalized_error = denormalized_groundtruth - denormalized_prediction
                 mse_per_dataset = self.get_mse_per_label(denormalized_error)
                 mse.append(mse_per_dataset)
 
@@ -270,12 +269,6 @@ class SimpleEvaluator(Evaluator):
             for dataset in self.datasets:
                 prediction = self.simple_net(torch.tensor(dataset.input))
                 groundtruth = torch.tensor(dataset.output)
-                error = groundtruth - prediction
-                denormalized_error = Evaluator.denormalize(
-                    error.numpy(),
-                    dataset.label_mean_vector,
-                    dataset.label_scale_vector
-                )
                 denormalized_groundtruth = Evaluator.denormalize(
                     groundtruth.numpy(),
                     dataset.label_mean_vector,
@@ -286,6 +279,10 @@ class SimpleEvaluator(Evaluator):
                     dataset.label_mean_vector,
                     dataset.label_scale_vector
                 )
+                # Denormalize ground truth and prediction separately, then subtract, so the
+                # label mean cancels. (denormalize() adds the mean; applying it to the residual
+                # directly would add the label mean to every error and inflate the RMSE.)
+                denormalized_error = denormalized_groundtruth - denormalized_prediction
                 mse_per_dataset = self.get_mse_per_label(denormalized_error)
                 mse.append(mse_per_dataset)
 
@@ -296,6 +293,54 @@ class SimpleEvaluator(Evaluator):
                     plt.show()            
         if is_in_training:
             self.simple_net.train()
+        return mse
+
+
+class SequenceEvaluator(Evaluator):
+    """Evaluator for the windowed sequence models (resmlp / gru / res_gru).
+
+    Denormalizes ground truth and prediction SEPARATELY and subtracts, giving the true
+    physical error. (This avoids the error-denormalization issue in the other evaluators,
+    which apply denormalize() -- which adds the label mean -- directly to the residual.)
+    """
+    def __init__(self) -> None:
+        super().__init__()
+        self.net = None
+
+    def load_model(self, net):
+        self.net = net
+
+    def _device_and_dtype(self):
+        param = next(self.net.parameters())
+        return param.device, param.dtype
+
+    def evaluate_model(self, can_show_plot=False):
+        is_in_training = self.net.training
+        if is_in_training:
+            self.net.eval()
+        device, dtype = self._device_and_dtype()
+        with torch.no_grad():
+            mse = []
+            for dataset in self.datasets:
+                if len(dataset) == 0:
+                    continue
+                x = torch.tensor(dataset.input, device=device, dtype=dtype)
+                prediction = self.net(x).cpu().numpy()          # normalized label space
+                groundtruth = dataset.output                    # normalized label space
+                denormalized_prediction = Evaluator.denormalize(
+                    prediction, dataset.label_mean_vector, dataset.label_scale_vector)
+                denormalized_groundtruth = Evaluator.denormalize(
+                    groundtruth, dataset.label_mean_vector, dataset.label_scale_vector)
+                denormalized_error = denormalized_groundtruth - denormalized_prediction
+                mse.append(self.get_mse_per_label(denormalized_error))
+
+                if can_show_plot:
+                    self.plot_prediction_error(denormalized_error, denormalized_groundtruth,
+                                               denormalized_prediction, dataset.source_file)
+                    self.plot_nn_output(denormalized_prediction)
+                    plt.show()
+        if is_in_training:
+            self.net.train()
         return mse
 
 
@@ -316,12 +361,6 @@ class RotorNetEvaluator(Evaluator):
             for dataset in self.datasets:
                 prediction = self.rotor_net(torch.tensor(dataset.shared_input), [torch.tensor(individual) for individual in dataset.individual_input])  # TODO: all validator datasets should be prepared by data_factory pass via loadersets
                 groundtruth = torch.tensor(dataset.output)
-                error = groundtruth - prediction
-                denormalized_error = Evaluator.denormalize(
-                    error.numpy(),
-                    dataset.label_mean_vector,
-                    dataset.label_scale_vector
-                )
                 denormalized_groundtruth = Evaluator.denormalize(
                     groundtruth.numpy(),
                     dataset.label_mean_vector,
@@ -332,6 +371,10 @@ class RotorNetEvaluator(Evaluator):
                     dataset.label_mean_vector,
                     dataset.label_scale_vector
                 )
+                # Denormalize ground truth and prediction separately, then subtract, so the
+                # label mean cancels. (denormalize() adds the mean; applying it to the residual
+                # directly would add the label mean to every error and inflate the RMSE.)
+                denormalized_error = denormalized_groundtruth - denormalized_prediction
                 mse_per_dataset = self.get_mse_per_label(denormalized_error)
                 mse.append(mse_per_dataset)
 

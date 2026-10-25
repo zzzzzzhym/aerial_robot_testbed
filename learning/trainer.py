@@ -494,7 +494,7 @@ class RotorNetTrainer:
                     f"[{epoch + 1}] "
                     f"loss: {self.loss_trace[-1]:.2f} "
                     f"loss_validation: {self.loss_trace_on_validation[-1]:.2f}"
-                )    
+                )
 
     def plot_loss(self):
         fig, axs = plt.subplots(2, 1)
@@ -502,4 +502,94 @@ class RotorNetTrainer:
         axs[0].set_ylabel('loss_trace [N]')
         axs[1].plot(self.loss_trace_on_validation)
         axs[1].set_ylabel('loss_trace_on_validation [N]')
+        axs[1].set_xlabel('epoch')
+
+
+class SequenceTrainer:
+    """Full-minibatch trainer for the sequence models (resmlp / gru / res_gru).
+
+    Unlike DaimlTrainer/SimpleTrainer, this iterates over ALL pooled windows each epoch
+    (not one batch per condition) and does NOT apply spectral-norm clipping -- both were the
+    main causes of the shipped pipeline underfitting (see claude/learning/WORKLOG.md). Keeps
+    the best model by validation loss (early stopping)."""
+    def __init__(self,
+                 net,
+                 train_loader: DataLoader,
+                 dim_of_label: int,
+                 validation_callback: callable,
+                 config_file: str = "trainer_config.yaml",
+                 ) -> None:
+        self.net = net
+        self.train_loader = train_loader
+        self.dim_of_label = dim_of_label
+        self.validator_callback = validation_callback
+        self.config = SequenceTrainer.load_config(config_file)
+
+        self.device = self._resolve_device(self.config.get("device", "auto"))
+        self.dtype = torch.float32 if self.config.get("use_float32", True) else torch.get_default_dtype()
+        self.net.to(self.device, self.dtype)
+
+        self.criterion = nn.MSELoss()
+        self.optimizer = optim.Adam(self.net.parameters(),
+                                    lr=self.config["learning_rate"],
+                                    weight_decay=self.config.get("weight_decay", 0.0))
+        self.loss_trace = []
+        self.loss_trace_on_validation = []
+        self.best_val = float("inf")
+        self.best_epoch = -1
+        self.best_state = None
+
+    @staticmethod
+    def _resolve_device(device_cfg: str) -> torch.device:
+        if device_cfg == "auto":
+            return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        return torch.device(device_cfg)
+
+    @staticmethod
+    def load_config(config_file: str):
+        path = common_utils.file_manager.find_path_to_folder(["learning", "config", "sequence_net", "trainer_config.yaml"])
+        print(f"Loading trainer config from {os.path.relpath(path)}...")
+        with open(path, 'r') as file:
+            return yaml.safe_load(file)
+
+    def train_model(self):
+        self.loss_trace = []
+        self.loss_trace_on_validation = []
+        patience = self.config.get("patience", 0)
+        for epoch in range(self.config["num_epochs"]):
+            self.net.train()
+            running_loss = 0.0
+            num_batches = 0
+            for batch in self.train_loader:
+                x = batch['input'].to(self.device, self.dtype)
+                y = batch['output'].to(self.device, self.dtype)
+                self.optimizer.zero_grad()
+                loss = self.criterion(self.net(x), y)
+                loss.backward()
+                self.optimizer.step()
+                running_loss += loss.item()
+                num_batches += 1
+            self.loss_trace.append(running_loss / max(num_batches, 1))
+            val = self.validator_callback()
+            self.loss_trace_on_validation.append(val)
+            if val < self.best_val:
+                self.best_val = val
+                self.best_epoch = epoch
+                self.best_state = {k: v.detach().clone() for k, v in self.net.state_dict().items()}
+            if epoch % 50 == 0:
+                print(f"[{epoch + 1}] loss: {self.loss_trace[-1]:.4f} "
+                      f"loss_validation: {val:.4f} (best {self.best_val:.4f}@{self.best_epoch})")
+            if patience and epoch - self.best_epoch > patience:
+                print(f"Early stopping at epoch {epoch} (no val improvement for {patience} epochs)")
+                break
+        if self.best_state is not None:
+            self.net.load_state_dict(self.best_state)
+            print(f"Loaded best model from epoch {self.best_epoch} (val {self.best_val:.4f})")
+
+    def plot_loss(self):
+        fig, axs = plt.subplots(2, 1)
+        axs[0].plot(self.loss_trace)
+        axs[0].set_ylabel('train MSE loss')
+        axs[1].plot(self.loss_trace_on_validation)
+        axs[1].set_ylabel('validation MSE [N^2]')
         axs[1].set_xlabel('epoch')

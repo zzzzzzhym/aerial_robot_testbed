@@ -1,0 +1,18 @@
+# Sequence model configuration.
+# Switch the architecture by changing model_type: resmlp | gru | res_gru
+#   resmlp  : residual MLP on the flattened time window
+#   gru     : plain stacked GRU over the window
+#   res_gru : stacked GRU with residual skip between layers (best in exploration)
+model_type: res_gru
+
+ResMLP:
+  width: 128
+  blocks: 3
+
+GRU:
+  hidden: 128
+  layers: 2
+
+ResGRU:
+  hidden: 128
+  layers: 3

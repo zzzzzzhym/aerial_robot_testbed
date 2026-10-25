@@ -87,6 +87,35 @@ class SimpleDataset(Dataset):
                   'output': torch.tensor(output)}
         return sample
     
+class SequenceDataset(Dataset):
+    """Windowed sequence samples for the sequence models.
+    input: (M, window, feat_dim) already normalized; output: (M, dim_of_label) normalized."""
+
+    def __init__(self,
+        input_windows: np.ndarray,
+        output: np.ndarray,
+        input_mean_vector,
+        input_scale_vector,
+        label_mean_vector,
+        label_scale_vector,
+        source_file: str) -> None:
+        self.input = input_windows
+        self.output = output
+        self.source_file = source_file
+        self.input_mean_vector = input_mean_vector
+        self.input_scale_vector = input_scale_vector
+        self.label_mean_vector = label_mean_vector
+        self.label_scale_vector = label_scale_vector
+
+    def __len__(self):
+        return len(self.input)
+
+    def __getitem__(self, idx):
+        sample = {'input': torch.tensor(self.input[idx]),
+                  'output': torch.tensor(self.output[idx])}
+        return sample
+
+
 class RotorNetDataset(Dataset):
 
     def __init__(self,
@@ -596,6 +625,70 @@ class SimpleDataFactory(TrainingDataFactory):
         loaderset = self.prepare_loaderset(datasets)
         return loaderset
     
+
+class SequenceDataFactory(TrainingDataFactory):
+    """Builds overlapping time windows from the time-ordered csv data for the sequence
+    models. Windows never straddle two files (each file is one condition). Produces a pooled
+    training DataLoader (full-minibatch training) plus per-condition datasets for evaluation."""
+    def __init__(self, input_label_map_file: str) -> None:
+        super().__init__(input_label_map_file)
+
+    @staticmethod
+    def get_default_config_path():
+        return common_utils.file_manager.find_path_to_folder(
+            ["learning", "config", "sequence_net", "data_factory_config.yaml"])
+
+    @property
+    def window(self) -> int:
+        return self.config["window"]
+
+    def build_windows(self, input_data: np.ndarray, label_data: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Stack the last `window` frames; the label is the one at the window's last frame."""
+        window = self.window
+        n = len(input_data)
+        if n < window:
+            return (np.empty((0, window, input_data.shape[1])), np.empty((0, label_data.shape[1])))
+        end_idx = np.arange(window - 1, n)
+        windows = np.stack([input_data[i - window + 1:i + 1] for i in end_idx], axis=0)
+        labels = label_data[end_idx]
+        return windows, labels
+
+    def convert_sim_to_training_data(self, input_data: np.ndarray, label_data: np.ndarray, file: str) -> SequenceDataset:
+        # per-feature standardization applied before windowing (input + label)
+        norm_input = (input_data - self.input_mean_vector) * self.input_scale_vector
+        norm_label = (label_data - self.label_mean_vector) * self.label_scale_vector
+        windows, labels = self.build_windows(norm_input, norm_label)
+        return SequenceDataset(windows, labels,
+                               self.input_mean_vector, self.input_scale_vector,
+                               self.label_mean_vector, self.label_scale_vector, file)
+
+    def prepare_datasets(self, data_menu: list, can_inspect_data: bool = False) -> list[SequenceDataset]:
+        datasets = []
+        for file in data_menu:
+            input_data, label_data = self.load_sim_data(file)
+            if can_inspect_data:
+                TrainingDataFactory.plot_dataset_distribution_grid(input_data, self.input_headers, file + " input")
+                TrainingDataFactory.plot_dataset_distribution_grid(label_data, self.label_headers, file + " label")
+            datasets.append(self.convert_sim_to_training_data(input_data, label_data, file))
+        return datasets
+
+    def prepare_train_loader(self, datasets: list[SequenceDataset]) -> DataLoader:
+        """Pool all windows across conditions into one DataLoader for full-minibatch training."""
+        all_inputs = np.concatenate([d.input for d in datasets], axis=0)
+        all_labels = np.concatenate([d.output for d in datasets], axis=0)
+        length = int(len(all_inputs) * self.config["data_usage_ratio"])
+        pooled = SequenceDataset(all_inputs[:length], all_labels[:length],
+                                 self.input_mean_vector, self.input_scale_vector,
+                                 self.label_mean_vector, self.label_scale_vector, "pooled_train")
+        print(f"Pooled {len(pooled)} windows (window={self.window}) from {len(datasets)} conditions for training")
+        return torch.utils.data.DataLoader(pooled, batch_size=self.config["batch_size"],
+                                           shuffle=self.config["can_shuffle"])
+
+    def get_data(self, data_menu: list, can_inspect_data: bool = False) -> tuple[DataLoader, list[SequenceDataset]]:
+        datasets = self.prepare_datasets(data_menu, can_inspect_data)
+        train_loader = self.prepare_train_loader(datasets)
+        return train_loader, datasets
+
 
 class RotorNetDataFactory(TrainingDataFactory):
     def __init__(self, input_label_map_file: str) -> None:

@@ -1,0 +1,5 @@
+# Sequence data factory configuration.
+window: 10              # number of stacked time frames fed to the model (1 = single frame)
+batch_size: 512        # minibatch size for the pooled training loader
+can_shuffle: true      # shuffle windows during training
+data_usage_ratio: 1.0  # fraction of pooled windows used for training

@@ -5,6 +5,7 @@ class ModelArchitecture(Enum):
     DAIML = 0
     SIMPLE_NET = 1
     ROTOR_NET = 2
+    SEQUENCE_NET = 3   # resmlp / gru / res_gru, selectable via config model_type
 
 class TrainingPipeline:
     def __init__(
@@ -108,6 +109,21 @@ class PipelineFactory:
                 pipeline_adapters.RotorNetDataFactoryAdapter(),
                 pipeline_adapters.RotorNetValidatorAdapter(),
                 pipeline_adapters.RotorNetModelLoader(),
+            ),
+        },
+
+        ModelArchitecture.SEQUENCE_NET: {
+            "train": lambda: TrainingPipeline(
+                pipeline_adapters.SequenceDataFactoryAdapter(),
+                pipeline_adapters.SequenceModelFactoryAdapter(),
+                pipeline_adapters.SequenceTrainerAdapter(),
+                pipeline_adapters.SequenceValidatorAdapter(),
+                pipeline_adapters.SequenceModelSaver(),
+            ),
+            "test": lambda: TestPipeline(
+                pipeline_adapters.SequenceDataFactoryAdapter(),
+                pipeline_adapters.SequenceValidatorAdapter(),
+                pipeline_adapters.SequenceModelLoader(),
             ),
         },
     }

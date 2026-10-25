@@ -27,3 +27,12 @@ from pipeline_adapters.rotor_net_adapters import (
     RotorNetModelSaver,
     RotorNetModelLoader,
 )
+
+from pipeline_adapters.sequence_adapters import (
+    SequenceDataFactoryAdapter,
+    SequenceModelFactoryAdapter,
+    SequenceTrainerAdapter,
+    SequenceValidatorAdapter,
+    SequenceModelSaver,
+    SequenceModelLoader,
+)

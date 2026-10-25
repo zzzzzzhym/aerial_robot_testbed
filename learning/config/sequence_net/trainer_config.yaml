@@ -1,0 +1,7 @@
+# Sequence trainer configuration (full-minibatch Adam, early stopping).
+learning_rate: 0.001
+weight_decay: 0.00001
+num_epochs: 500
+patience: 80          # stop if validation does not improve for this many epochs (0 disables)
+use_float32: true     # sequence models train fine in float32 and much faster than double
+device: auto          # auto | cpu | cuda  (auto uses GPU if available; GRUs are far faster on GPU)
