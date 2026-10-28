@@ -1,8 +1,9 @@
 # Sequence model configuration.
-# Switch the architecture by changing model_type: resmlp | gru | res_gru
+# Switch the architecture by changing model_type: resmlp | gru | res_gru | tcn
 #   resmlp  : residual MLP on the flattened time window
 #   gru     : plain stacked GRU over the window
 #   res_gru : stacked GRU with residual skip between layers (best in exploration)
+#   tcn     : dilated causal 1D-conv stack over the window (FIR filter; parallel, stateless)
 model_type: res_gru
 
 ResMLP:
@@ -16,3 +17,9 @@ GRU:
 ResGRU:
   hidden: 128
   layers: 3
+
+TCN:
+  channels: 96
+  levels: 3
+  kernel: 3
+  dropout: 0.0

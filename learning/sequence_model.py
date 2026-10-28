@@ -1,13 +1,16 @@
 """Sequence / windowed disturbance-force models and their factory.
 
-Three architectures selectable by config (`model_type`):
+Four architectures selectable by config (`model_type`):
   - "resmlp":  residual MLP on the flattened time window (LayerNorm + SiLU + residual blocks)
   - "gru":     plain stacked GRU over the window
   - "res_gru": stacked GRU with a residual skip BETWEEN layers (same size as "gru"),
                the best configuration found in the exploration (see claude/learning/WORKLOG.md)
+  - "tcn":     dilated causal 1D-conv stack over the window (learned FIR filter over time);
+               parallel, stateless, inherently regularizing (see claude/learning/WORKLOG.md)
 
-All three take an input window of shape [batch, window, feat_dim] and output [batch, dim_of_label].
-ResMLP flattens the window internally, so the data format is uniform across model types.
+All take an input window of shape [batch, window, feat_dim] and output [batch, dim_of_label].
+ResMLP flattens the window internally; TCN transposes to [batch, feat_dim, window]; the data
+format fed to the factory is uniform across model types.
 """
 import os
 import yaml
@@ -90,11 +93,46 @@ class ResGruNet(nn.Module):
         return self.head(h[:, -1])
 
 
+class _CausalChomp(nn.Module):
+    """Trim the right-side padding a causal dilated conv adds, so output length == input."""
+    def __init__(self, chomp: int):
+        super().__init__()
+        self.chomp = chomp
+
+    def forward(self, x):  # [B, C, W + chomp] -> [B, C, W]
+        return x[:, :, :-self.chomp] if self.chomp > 0 else x
+
+
+class TcnNet(nn.Module):
+    """Temporal convolutional network over the window: stacked dilated causal 1D convs
+    (a learned FIR filter over time), with the readout taken from the last (most recent)
+    timestep. Weight sharing across time and a fixed receptive field make it inherently
+    regularizing; it is also parallel and stateless at inference."""
+    def __init__(self, feat_dim: int, dim_of_label: int, channels: int, levels: int,
+                 kernel: int = 3, dropout: float = 0.0):
+        super().__init__()
+        layers = []
+        c_in = feat_dim
+        for i in range(levels):
+            dilation = 2 ** i
+            pad = (kernel - 1) * dilation
+            layers += [nn.Conv1d(c_in, channels, kernel, padding=pad, dilation=dilation),
+                       _CausalChomp(pad), nn.SiLU(), nn.Dropout(dropout)]
+            c_in = channels
+        self.net = nn.Sequential(*layers)
+        self.head = nn.Sequential(nn.Linear(channels, channels), nn.SiLU(),
+                                  nn.Linear(channels, dim_of_label))
+
+    def forward(self, x):  # [B, W, F]
+        z = self.net(x.transpose(1, 2))   # [B, C, W]
+        return self.head(z[:, :, -1])     # readout from the most recent timestep
+
+
 # --------------------------------------------------------------------------------------
 # Factory
 # --------------------------------------------------------------------------------------
 class SequenceNetFactory:
-    MODEL_TYPES = ("resmlp", "gru", "res_gru")
+    MODEL_TYPES = ("resmlp", "gru", "res_gru", "tcn")
 
     def __init__(self,
                  feat_dim: int,
@@ -125,6 +163,10 @@ class SequenceNetFactory:
         elif model_type == "res_gru":
             c = self.config["ResGRU"]
             return ResGruNet(self.feat_dim, self.dim_of_label, c["hidden"], c["layers"])
+        elif model_type == "tcn":
+            c = self.config["TCN"]
+            return TcnNet(self.feat_dim, self.dim_of_label, c["channels"], c["levels"],
+                          c.get("kernel", 3), c.get("dropout", 0.0))
         raise ValueError(f"unknown model_type '{model_type}', expected one of {self.MODEL_TYPES}")
 
     @staticmethod

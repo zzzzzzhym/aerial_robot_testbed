@@ -5,7 +5,7 @@ class ModelArchitecture(Enum):
     DAIML = 0
     SIMPLE_NET = 1
     ROTOR_NET = 2
-    SEQUENCE_NET = 3   # resmlp / gru / res_gru, selectable via config model_type
+    SEQUENCE_NET = 3   # resmlp / gru / res_gru / tcn, selectable via config model_type
 
 class TrainingPipeline:
     def __init__(

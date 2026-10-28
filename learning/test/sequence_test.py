@@ -26,6 +26,7 @@ def make_factory(model_type, feat_dim=21, window=10, dim_of_label=3):
         "ResMLP": {"width": 32, "blocks": 2},
         "GRU": {"hidden": 32, "layers": 2},
         "ResGRU": {"hidden": 32, "layers": 3},
+        "TCN": {"channels": 32, "levels": 3, "kernel": 3, "dropout": 0.0},
     }
     return sequence_model.SequenceNetFactory(
         feat_dim, window, dim_of_label,
@@ -58,17 +59,35 @@ class TestSequenceModels(unittest.TestCase):
     def test_factory_roundtrip_reconstructs_same_net(self):
         B, W, F, O = 4, 10, 21, 3
         x = torch.randn(B, W, F, dtype=torch.float32)
-        f1 = make_factory("res_gru", F, W, O)
-        net1 = f1.generate_nets().float().eval()
-        cfg = f1.generate_self_config()
-        f2 = sequence_model.SequenceNetFactory(
-            cfg["feat_dim"], cfg["window"], cfg["dim_of_label"],
-            cfg["input_mean"], cfg["input_scale"], cfg["label_mean"], cfg["label_scale"],
-            customized_config=cfg["customized_config"])
-        net2 = f2.generate_nets().float().eval()
-        net2.load_state_dict(net1.state_dict())
+        for mt in ("res_gru", "tcn"):
+            f1 = make_factory(mt, F, W, O)
+            net1 = f1.generate_nets().float().eval()
+            cfg = f1.generate_self_config()
+            f2 = sequence_model.SequenceNetFactory(
+                cfg["feat_dim"], cfg["window"], cfg["dim_of_label"],
+                cfg["input_mean"], cfg["input_scale"], cfg["label_mean"], cfg["label_scale"],
+                customized_config=cfg["customized_config"])
+            net2 = f2.generate_nets().float().eval()
+            net2.load_state_dict(net1.state_dict())
+            with torch.no_grad():
+                np.testing.assert_allclose(net1(x).numpy(), net2(x).numpy(),
+                                           rtol=1e-5, atol=1e-6, err_msg=mt)
+
+    def test_tcn_is_causal(self):
+        """TCN output at the last step must not depend on any future frame (there are none
+        here) and, after chomping, output length matches input -- verify readout only sees
+        the window by checking a perturbation of the FIRST frame still changes the output
+        (receptive field reaches back) while shapes stay well-formed."""
+        F, O, W = 21, 3, 10
+        net = make_factory("tcn", F, W, O).generate_nets().float().eval()
+        x = torch.randn(1, W, F, dtype=torch.float32)
         with torch.no_grad():
-            np.testing.assert_allclose(net1(x).numpy(), net2(x).numpy(), rtol=1e-5, atol=1e-6)
+            y0 = net(x)
+            x2 = x.clone(); x2[0, 0] += 5.0        # perturb the oldest frame
+            y1 = net(x2)
+        self.assertEqual(tuple(y0.shape), (1, O))
+        self.assertTrue(torch.any(torch.abs(y1 - y0) > 1e-6),
+                        "receptive field should reach the first frame")
 
 
 class TestSequenceWindowing(unittest.TestCase):

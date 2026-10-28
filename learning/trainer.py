@@ -506,7 +506,7 @@ class RotorNetTrainer:
 
 
 class SequenceTrainer:
-    """Full-minibatch trainer for the sequence models (resmlp / gru / res_gru).
+    """Full-minibatch trainer for the sequence models (resmlp / gru / res_gru / tcn).
 
     Unlike DaimlTrainer/SimpleTrainer, this iterates over ALL pooled windows each epoch
     (not one batch per condition) and does NOT apply spectral-norm clipping -- both were the
