@@ -43,3 +43,5 @@
 - sensed_dv
 - sensed_omega
 - rotor_speeds_desired
+- f_contact_normal
+- tip_position
