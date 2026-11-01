@@ -412,15 +412,19 @@ def save_daiml_model(name, phi_net: PhiNet, h_net: HNet, model_factory_config: d
         file_path = os.path.join(current_dir, "model", name + ".pth")
         torch.save({"phi": phi_net.state_dict(),
                     "h": h_net.state_dict(),
-                    "model_factory_init_args": model_factory_config, 
-                    "phi_net_io_fields": input_label_map}, 
+                    "model_name": name,
+                    "model_type": "daiml",
+                    "model_factory_init_args": model_factory_config,
+                    "phi_net_io_fields": input_label_map},
                     file_path)
-        print(f"Model saved to {os.path.relpath(file_path, os.getcwd())}")
+        print(f"Model saved to {common_utils.file_manager.relative_to_root(file_path)}")
 
 def load_daiml_model(name) -> tuple[PhiNet, HNet, dict]:
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(current_dir, "model", name + ".pth")       
+    file_path = os.path.join(current_dir, "model", name + ".pth")
     package = torch.load(file_path)
+    print(f"Loading {package.get('model_type', 'daiml')} model '{package.get('model_name', name)}' "
+          f"from {common_utils.file_manager.relative_to_root(file_path)}")
 
     # recreate the model factory instance that generated the trained model
     model_factory_instance = DaimlModelFactory(
@@ -446,15 +450,19 @@ def save_simple_model(name, simple_net: SimpleNet, model_factory_config: dict, i
         current_dir = os.path.dirname(os.path.abspath(__file__))
         file_path = os.path.join(current_dir, "model", name + ".pth")
         torch.save({"simple": simple_net.state_dict(),
+                    "model_name": name,
+                    "model_type": "simple",
                     "model_factory_init_args": model_factory_config,
-                    "simple_net_io_fields": input_label_map}, 
+                    "simple_net_io_fields": input_label_map},
                     file_path)
-        print(f"Model saved to {os.path.relpath(file_path, os.getcwd())}")
+        print(f"Model saved to {common_utils.file_manager.relative_to_root(file_path)}")
 
 def load_simple_model(name) -> SimpleNet:
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(current_dir, "model", name + ".pth")       
+    file_path = os.path.join(current_dir, "model", name + ".pth")
     package = torch.load(file_path)
+    print(f"Loading {package.get('model_type', 'simple')} model '{package.get('model_name', name)}' "
+          f"from {common_utils.file_manager.relative_to_root(file_path)}")
 
     # recreate the model factory instance that generated the trained model
     model_factory_instance = SimpleNetFactory(
@@ -478,15 +486,19 @@ def save_rotor_net_model(name, rotor_net: NaiveSumRotorNet | AttentionBasedRotor
         current_dir = os.path.dirname(os.path.abspath(__file__))
         file_path = os.path.join(current_dir, "model", name + ".pth")
         torch.save({"rotor": rotor_net.state_dict(),
+                    "model_name": name,
+                    "model_type": "rotor_net",
                     "model_factory_init_args": model_factory_config,
-                    "rotor_net_io_fields": input_label_map}, 
+                    "rotor_net_io_fields": input_label_map},
                     file_path)
-        print(f"Model saved to {os.path.relpath(file_path, os.getcwd())}")
+        print(f"Model saved to {common_utils.file_manager.relative_to_root(file_path)}")
 
 def load_rotor_net_model(name) -> NaiveSumRotorNet | AttentionBasedRotorNet:
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    file_path = os.path.join(current_dir, "model", name + ".pth")       
+    file_path = os.path.join(current_dir, "model", name + ".pth")
     package = torch.load(file_path)
+    print(f"Loading {package.get('model_type', 'rotor_net')} model '{package.get('model_name', name)}' "
+          f"from {common_utils.file_manager.relative_to_root(file_path)}")
 
     # recreate the model factory instance that generated the trained model
     model_factory_instance = RotorNetFactory(

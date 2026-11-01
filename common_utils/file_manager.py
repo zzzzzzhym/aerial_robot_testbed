@@ -8,6 +8,12 @@ def find_path_to_folder(subfolder_name: list[str]) -> str:
     path = os.path.join(upper_dir, *subfolder_name)
     return path
 
+def relative_to_root(path: str) -> str:
+    """Return path relative to the repo root, for clean portable logging (never an abs path)."""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(current_dir)    # repo root (parent of common_utils)
+    return os.path.relpath(path, root)
+
 def write_to_csv(file_path, first_line, array):
     # should consider call back function to reuse the file existence check
     if not os.path.exists(file_path):

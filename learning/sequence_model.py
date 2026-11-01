@@ -203,17 +203,22 @@ def save_sequence_model(name, net, model_factory_config: dict, input_label_map: 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(current_dir, "model", name + ".pth")
     cpu_state = {k: v.detach().cpu() for k, v in net.state_dict().items()}  # portable across devices
+    arch = model_factory_config["customized_config"]["model_type"]
     torch.save({"net": cpu_state,
+                "model_name": name,
+                "model_type": "sequence_" + arch,   # e.g. sequence_gru / sequence_tcn
                 "model_factory_init_args": model_factory_config,
                 "sequence_net_io_fields": input_label_map},
                file_path)
-    print(f"Model saved to {os.path.relpath(file_path, os.getcwd())}")
+    print(f"Model saved to {common_utils.file_manager.relative_to_root(file_path)}")
 
 
 def load_sequence_model(name):
     current_dir = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(current_dir, "model", name + ".pth")
     package = torch.load(file_path, map_location="cpu")
+    print(f"Loading {package.get('model_type', 'sequence')} model '{package.get('model_name', name)}' "
+          f"from {common_utils.file_manager.relative_to_root(file_path)}")
     args = package["model_factory_init_args"]
     factory = SequenceNetFactory(
         args["feat_dim"], args["window"], args["dim_of_label"],
@@ -267,6 +272,8 @@ def load_sequence_inference_model(name):
     current_dir = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(current_dir, "model", name + ".pth")
     package = torch.load(file_path, map_location="cpu")
+    print(f"Loading {package.get('model_type', 'sequence')} model '{package.get('model_name', name)}' "
+          f"from {common_utils.file_manager.relative_to_root(file_path)}")
     args = package["model_factory_init_args"]
     factory = SequenceNetFactory(
         args["feat_dim"], args["window"], args["dim_of_label"],
