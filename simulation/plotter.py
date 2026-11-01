@@ -528,6 +528,11 @@ class Plotter:
             logger["f_disturb_est_bemt"][:, 1]**2 +
             logger["f_disturb_est_bemt"][:, 2]**2
         )
+        f_seq_norm = np.sqrt(
+            logger["f_disturb_est_seq"][:, 0]**2 +
+            logger["f_disturb_est_seq"][:, 1]**2 +
+            logger["f_disturb_est_seq"][:, 2]**2
+        )
         torque_norm = np.sqrt(
             logger["torque_disturb"][:, 0]**2 +
             logger["torque_disturb"][:, 1]**2 +
@@ -553,6 +558,7 @@ class Plotter:
         axs[0, 0].plot(self.t_span, logger["f_disturb_est"][:, 0], marker='.', markersize=7, linewidth=1, label='f_disturb_est')
         axs[0, 0].plot(self.t_span, logger["f_disturb_est_base"][:, 0], marker='.', markersize=5, linewidth=0.5, label='f_disturb_est_base')
         axs[0, 0].plot(self.t_span, logger["f_disturb_est_bemt"][:, 0], marker='.', markersize=5, linewidth=0.5, label='f_disturb_est_bemt')
+        axs[0, 0].plot(self.t_span, logger["f_disturb_est_seq"][:, 0], marker='.', markersize=6, linewidth=1, label='f_disturb_est_seq')
         axs[0, 0].plot(self.t_span, logger["f_disturb_sensed_raw"][:, 0], marker='.', markersize=3, linewidth=0.2, alpha = 0.3, label='f_disturb_sensed_raw')
         axs[0, 0].plot(self.t_span, logger["f_propeller"][:, 0], marker='.', markersize=5, linewidth=0.2, label='f_propeller')
         axs[0, 0].plot(self.t_span, logger["f_body"][:, 0], marker='.', markersize=5, linewidth=0.1, label='f_body')
@@ -563,6 +569,7 @@ class Plotter:
         axs[1, 0].plot(self.t_span, logger["f_disturb_est"][:, 1], marker='.', markersize=7, linewidth=1, label='f_disturb_est')
         axs[1, 0].plot(self.t_span, logger["f_disturb_est_base"][:, 1], marker='.', markersize=5, linewidth=0.5, label='f_disturb_est_base')
         axs[1, 0].plot(self.t_span, logger["f_disturb_est_bemt"][:, 1], marker='.', markersize=5, linewidth=0.5, label='f_disturb_est_bemt')
+        axs[1, 0].plot(self.t_span, logger["f_disturb_est_seq"][:, 1], marker='.', markersize=6, linewidth=1, label='f_disturb_est_seq')
         axs[1, 0].plot(self.t_span, logger["f_disturb_sensed_raw"][:, 1], marker='.', markersize=3, linewidth=0.2, alpha = 0.3, label='f_disturb_sensed_raw')
         axs[1, 0].plot(self.t_span, logger["f_propeller"][:, 1], marker='.', markersize=5, linewidth=0.2, label='f_propeller')
         axs[1, 0].plot(self.t_span, logger["f_body"][:, 1], marker='.', markersize=5, linewidth=0.1, label='f_body')        
@@ -573,6 +580,7 @@ class Plotter:
         axs[2, 0].plot(self.t_span, logger["f_disturb_est"][:, 2], marker='.', markersize=7, linewidth=1, label='f_disturb_est')
         axs[2, 0].plot(self.t_span, logger["f_disturb_est_base"][:, 2], marker='.', markersize=5, linewidth=0.5, label='f_disturb_est_base')
         axs[2, 0].plot(self.t_span, logger["f_disturb_est_bemt"][:, 2], marker='.', markersize=5, linewidth=0.5, label='f_disturb_est_bemt')
+        axs[2, 0].plot(self.t_span, logger["f_disturb_est_seq"][:, 2], marker='.', markersize=6, linewidth=1, label='f_disturb_est_seq')
         axs[2, 0].plot(self.t_span, logger["f_disturb_sensed_raw"][:, 2], marker='.', markersize=3, linewidth=0.2, alpha = 0.3, label='f_disturb_sensed_raw')
         axs[2, 0].plot(self.t_span, logger["f_propeller"][:, 2], marker='.', markersize=5, linewidth=0.2, label='f_propeller')
         axs[2, 0].plot(self.t_span, logger["f_body"][:, 2], marker='.', markersize=5, linewidth=0.1, label='f_body')        
@@ -583,6 +591,7 @@ class Plotter:
         axs[3, 0].plot(self.t_span, f_est_norm, marker='.', markersize=7, linewidth=1, label='f_est_norm')
         axs[3, 0].plot(self.t_span, f_base_norm, marker='.', markersize=5, linewidth=0.5, label='f_base_norm')
         axs[3, 0].plot(self.t_span, f_bemt_norm, marker='.', markersize=5, linewidth=0.5, label='f_bemt_norm')
+        axs[3, 0].plot(self.t_span, f_seq_norm, marker='.', markersize=6, linewidth=1, label='f_seq_norm')
         axs[3, 0].set_ylabel("f_norm")
         axs[3, 0].legend()
         

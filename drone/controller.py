@@ -1,3 +1,4 @@
+import enum
 import numpy as np
 import warnings
 
@@ -11,6 +12,17 @@ from drone import trajectory
 from drone import disturbance_estimator
 from drone import propeller
 
+
+class DisturbanceEstimatorChoice(enum.Enum):
+    """Which disturbance estimator feeds the closed-loop force compensation.
+    All estimators are still stepped and logged every tick (shadow mode); only the selected
+    one is used for control in step_desired_force."""
+    BASELINE = enum.auto()      # pure-adaptive baseline (kernel = 1)
+    PURE_DAIML = enum.auto()    # DAIML phi-net + adaptive a_hat
+    BEMT = enum.auto()          # BEMT/SimpleNet fitted residual
+    SEQUENCE = enum.auto()      # windowed sequence net (GRU / TCN / ResMLP)
+
+
 class DroneController(simulation.scenario.Controller):
     def __init__(self, drone: params.Multicopter) -> None:
         # config
@@ -23,19 +35,18 @@ class DroneController(simulation.scenario.Controller):
         bemt_disturbance_model_name = "wind_free_space_training_cfd_our_proposal_resmlp"
         # bemt_disturbance_model_name = "wind_free_space_training_in_house_sim_bemt"
         # bemt_disturbance_model_name = "wind_near_wall_bemt_fitting"
+        # windowed sequence model (GRU/TCN/ResMLP) used by the sequence disturbance estimator
+        sequence_disturbance_model_name = "wind_free_space_training_cfd_our_proposal_gru"
         # propeller_lookup_table_name = "apc_8x6_with_trail"
         # propeller_lookup_table_name = "apc_8x6_fitted_in_noise_and_vibration"
         # propeller_lookup_table_name = "p600"
         propeller_lookup_table_name = "p600_single_rotor_after_bemt_fit"
         # propeller_lookup_table_name = "p600_single_rotor_quadratic"
-        self.is_using_baseline_disturbance_estimator = False
-        self.is_using_pure_daiml_disturbance_estimator = False
-        self.is_using_bemt_disturbance_estimator = True
+        # select the closed-loop estimator here; the rest run in shadow (stepped + logged)
+        self.disturbance_estimator_choice = DisturbanceEstimatorChoice.SEQUENCE
         self.is_using_inflow_model = True
         print("DroneController: using inflow model: ", self.is_using_inflow_model)
-        print("DroneController: using pure DAIML disturbance estimator: ", self.is_using_pure_daiml_disturbance_estimator)
-        print("DroneController: using baseline disturbance estimator: ", self.is_using_baseline_disturbance_estimator)
-        print("DroneController: using BEMT disturbance estimator: ", self.is_using_bemt_disturbance_estimator)
+        print("DroneController: closed-loop disturbance estimator: ", self.disturbance_estimator_choice.name)
 
         self.params = drone
         self.e_x = np.array([0.0, 0.0, 0.0])
@@ -69,6 +80,9 @@ class DroneController(simulation.scenario.Controller):
         self.bemt_disturbance_estimator = disturbance_estimator.BemtFittedDisturbanceEstimatorV1(bemt_disturbance_model_name, 0.01)
         self.f_disturb_bemt = np.array([0.0, 0.0, 0.0])
         self.torque_disturb_bemt = np.array([0.0, 0.0, 0.0])
+        self.sequence_disturbance_estimator = disturbance_estimator.SequenceNetDisturbanceEstimator(sequence_disturbance_model_name, 0.01)
+        self.f_disturb_seq = np.array([0.0, 0.0, 0.0])
+        self.torque_disturb_seq = np.array([0.0, 0.0, 0.0])
         self.propeller_force_table = propeller_lookup_table.PropellerLookupTable.Reader(propeller_lookup_table_name)
         self.propeller = propeller.apc_8x6
         self.is_warmed_up = False
@@ -100,6 +114,7 @@ class DroneController(simulation.scenario.Controller):
             "f_disturb_est":           None,
             "f_disturb_est_base":      None,
             "f_disturb_est_bemt":      None,
+            "f_disturb_est_seq":       None,
             "f_disturb_sensed_raw":    None,
             "torque_ctrl_input":       None,
             "torque_feedback":         None,
@@ -108,6 +123,7 @@ class DroneController(simulation.scenario.Controller):
             "torque_disturb_est":      None,
             "torque_disturb_est_base": None,
             "torque_disturb_est_bemt": None,
+            "torque_disturb_est_seq":  None,
             "omega_desired":           None,
             "pose_desired":            None,
             "pose_desired_dot":        None,
@@ -200,6 +216,31 @@ class DroneController(simulation.scenario.Controller):
         self._log("f_disturb_est_bemt", self.f_disturb_bemt)
         self._log("torque_disturb_est_bemt", self.torque_disturb_bemt)
 
+        # windowed sequence model (GRU/TCN/ResMLP) + adaptive residual observer. f_ctrl_input /
+        # torque_ctrl_input are this tick's previous-step values (self.f/self.torque not yet
+        # updated) -- a one-step lag, unavoidable in closed loop. The net predicts disturbance
+        # FORCE in body frame; the adaptive filters fit the measured-minus-predicted residual.
+        self.sequence_disturbance_estimator.step_disturbance(
+            {
+                "position":             sensor_data.position,
+                "q":                    sensor_data.q,
+                "v":                    sensor_data.v,
+                "sensed_omega":         sensor_data.omega,
+                "f_ctrl_input":         sensor_data.pose @ self.f,
+                "torque_ctrl_input":    self.torque,
+                "rotor_0_rotation_spd": sensor_data.rotors.rotors[0].rotation_speed,
+                "rotor_1_rotation_spd": sensor_data.rotors.rotors[1].rotation_speed,
+                "rotor_2_rotation_spd": sensor_data.rotors.rotors[2].rotation_speed,
+                "rotor_3_rotation_spd": sensor_data.rotors.rotors[3].rotation_speed,
+            },
+            self.get_sensed_disturbance(sensor_data),
+            tracking_error
+        )
+        self.f_disturb_seq = self.sequence_disturbance_estimator.get_disturbance_force()
+        self.torque_disturb_seq = self.sequence_disturbance_estimator.get_disturbance_torque()
+        self._log("f_disturb_est_seq", self.f_disturb_seq)
+        self._log("torque_disturb_est_seq", self.torque_disturb_seq)
+
     def get_predicted_air_force(self, sensor_data: simulation.interface.SensorData):
         """Get predicted air force and torque on drone from propeller lookup table.
 
@@ -251,12 +292,13 @@ class DroneController(simulation.scenario.Controller):
         f_feedback = utils.saturate_vector_norm(f_feedback, self.max_f_feedback)
 
         f_disturb_compensation = np.array([0.0, 0.0, 0.0])
-        if self.is_using_baseline_disturbance_estimator:
-            f_disturb_compensation = -sensor_data.pose@self.f_disturb_base # add disturbance force
-        elif self.is_using_pure_daiml_disturbance_estimator:
-            f_disturb_compensation = -sensor_data.pose@self.f_disturb # add disturbance force
-        elif self.is_using_bemt_disturbance_estimator:
-            f_disturb_compensation = -sensor_data.pose@self.f_disturb_bemt # add disturbance force
+        match self.disturbance_estimator_choice:
+            case DisturbanceEstimatorChoice.BASELINE:   f_disturb_selected = self.f_disturb_base
+            case DisturbanceEstimatorChoice.PURE_DAIML: f_disturb_selected = self.f_disturb
+            case DisturbanceEstimatorChoice.BEMT:       f_disturb_selected = self.f_disturb_bemt
+            case DisturbanceEstimatorChoice.SEQUENCE:   f_disturb_selected = self.f_disturb_seq
+            case _: raise ValueError(f"unhandled estimator choice: {self.disturbance_estimator_choice}")
+        f_disturb_compensation = -sensor_data.pose@f_disturb_selected # add disturbance force
 
         f_disturb_compensation = utils.saturate_vector_norm(f_disturb_compensation, self.max_f_disturb_compensation)
 

@@ -227,3 +227,56 @@ def load_sequence_model(name):
     for key, value in package["sequence_net_io_fields"].items():
         print(key, value)
     return net
+
+
+class SequenceInferenceModel(torch.nn.Module):
+    """Deployment wrapper: takes a RAW (un-normalized) window of features in the training
+    field order and returns the disturbance in PHYSICAL units.
+
+    Unlike the training path (which normalizes in the data pipeline), this bakes the
+    normalization in so the controller can feed raw windows and get physical forces out --
+    matching how SimpleNet is used at inference.
+
+    forward input : [window, feat_dim] or [batch, window, feat_dim] of raw features
+    forward output: [dim_label] or [batch, dim_label] physical disturbance
+    """
+    def __init__(self, net, input_mean, input_scale, label_mean, label_scale, window):
+        super().__init__()
+        self.net = net.float()   # training used float32; avoid the global-double-default mismatch
+        self.window = int(window)
+        f = torch.float32
+        self.register_buffer("input_mean", torch.as_tensor(input_mean, dtype=f))
+        self.register_buffer("input_scale", torch.as_tensor(input_scale, dtype=f))
+        self.register_buffer("label_mean", torch.as_tensor(label_mean, dtype=f))
+        self.register_buffer("label_scale", torch.as_tensor(label_scale, dtype=f))
+
+    def forward(self, raw_window):
+        x = raw_window.float()
+        squeeze = False
+        if x.dim() == 2:                       # [W, F] -> [1, W, F]
+            x = x.unsqueeze(0); squeeze = True
+        x = (x - self.input_mean) * self.input_scale      # per-feature normalize (broadcast over W)
+        out = self.net(x)                                  # [B, dim_label] (normalized)
+        phys = out / self.label_scale + self.label_mean    # denormalize to physical units
+        return phys.squeeze(0) if squeeze else phys
+
+
+def load_sequence_inference_model(name):
+    """Load a trained sequence model as a self-contained inference model (raw window ->
+    physical disturbance). Returns (inference_model, window, input_label_map)."""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(current_dir, "model", name + ".pth")
+    package = torch.load(file_path, map_location="cpu")
+    args = package["model_factory_init_args"]
+    factory = SequenceNetFactory(
+        args["feat_dim"], args["window"], args["dim_of_label"],
+        args["input_mean"], args["input_scale"], args["label_mean"], args["label_scale"],
+        customized_config=args["customized_config"])
+    net = factory.generate_nets()
+    net.load_state_dict(package["net"])
+    net.eval()
+    infer = SequenceInferenceModel(
+        net, args["input_mean"], args["input_scale"], args["label_mean"], args["label_scale"],
+        args["window"])
+    infer.eval()
+    return infer, int(args["window"]), package["sequence_net_io_fields"]

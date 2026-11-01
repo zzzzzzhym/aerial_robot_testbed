@@ -1,8 +1,11 @@
+import collections
+
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
 
 from learning import model
+from learning import sequence_model
 
 class UnitDisturbance:
     """disturbance in a single dimension
@@ -309,6 +312,73 @@ class BemtFittedDisturbanceEstimatorV1(BaselineDisturbanceEstimator):
     
     def get_disturbance_torque(self) -> np.ndarray:
         return np.array([self.tq_x.disturbance, self.tq_y.disturbance, self.tq_z.disturbance]) + self.predicted_disturbance[3:6]
+
+class SequenceNetDisturbanceEstimator(BaselineDisturbanceEstimator):
+    """Windowed sequence-model disturbance estimator WITH an adaptive residual observer,
+    mirroring BemtFittedDisturbanceEstimatorV1. Two stages:
+
+      1. prediction: the sequence net (GRU / TCN / ResMLP) predicts a feed-forward disturbance
+         FORCE from a rolling window of the last `window` RAW input frames (in the trained field
+         order read from the saved io map, normalization baked into the inference model).
+      2. adaptation: a per-axis adaptive filter (UnitDisturbance, kernel = 1) fits the leftover
+         residual (measured - predicted). Reported disturbance = net prediction + residual.
+
+    The net predicts force only, so the predicted torque is zero and the adaptive torque filters
+    estimate the full torque residual. step_disturbance takes a dict {field_name: value} covering
+    the model's input fields, plus measured_disturbance and tracking_error.
+    """
+    def __init__(self, model_name: str, dt: float) -> None:
+        super().__init__(dt)   # sets up the 6 UnitDisturbance(1, dt) adaptive residual filters
+        self.infer, self.window, io_fields = sequence_model.load_sequence_inference_model(model_name)
+        self.input_fields = io_fields["input"]          # ordered {field_name: [dims] or None}
+        self.buffer = collections.deque(maxlen=self.window)
+        self.predicted_disturbance = np.zeros(6)
+
+        # tune down measurement noise to trust the net prediction and smooth the residual
+        self.f_x.r = self.f_x.r*0.1
+        self.f_y.r = self.f_y.r*0.1
+        self.f_z.r = self.f_z.r*0.1
+        self.tq_x.r = self.tq_x.r*0.1
+        self.tq_y.r = self.tq_y.r*0.1
+        self.tq_z.r = self.tq_z.r*0.1
+
+    def _assemble_frame(self, field_values: dict) -> np.ndarray:
+        """Concatenate the requested dims of each input field, in the trained field order."""
+        cols = []
+        for name, dims in self.input_fields.items():
+            val = np.atleast_1d(np.asarray(field_values[name], dtype=float)).reshape(-1)
+            cols.append(val if dims is None else val[list(dims)])
+        return np.concatenate(cols)
+
+    def predict_disturbance(self, field_values: dict) -> np.ndarray:
+        """Feed-forward net prediction: [f_x, f_y, f_z, 0, 0, 0] (force only, no torque)."""
+        frame = self._assemble_frame(field_values)
+        if len(self.buffer) == 0:
+            for _ in range(self.window):     # left-pad at startup so we can predict from t=0
+                self.buffer.append(frame)
+        else:
+            self.buffer.append(frame)
+        window_arr = np.stack(self.buffer, axis=0)       # [window, feat_dim], raw (un-normalized)
+        with torch.no_grad():
+            predicted_force = self.infer(torch.from_numpy(window_arr)).numpy()
+        return np.hstack([predicted_force, np.zeros(3)])
+
+    def step_disturbance(self, field_values: dict, measured_disturbance: np.ndarray,
+                         tracking_error: np.ndarray) -> None:
+        self.predicted_disturbance = self.predict_disturbance(field_values)
+        self.f_x.step_estimator(np.array([[1]]), measured_disturbance[0] - self.predicted_disturbance[0], tracking_error[0])
+        self.f_y.step_estimator(np.array([[1]]), measured_disturbance[1] - self.predicted_disturbance[1], tracking_error[1])
+        self.f_z.step_estimator(np.array([[1]]), measured_disturbance[2] - self.predicted_disturbance[2], tracking_error[2])
+        self.tq_x.step_estimator(np.array([[1]]), measured_disturbance[3] - self.predicted_disturbance[3], tracking_error[3])
+        self.tq_y.step_estimator(np.array([[1]]), measured_disturbance[4] - self.predicted_disturbance[4], tracking_error[4])
+        self.tq_z.step_estimator(np.array([[1]]), measured_disturbance[5] - self.predicted_disturbance[5], tracking_error[5])
+
+    def get_disturbance_force(self) -> np.ndarray:
+        return np.array([self.f_x.disturbance, self.f_y.disturbance, self.f_z.disturbance]) + self.predicted_disturbance[0:3]
+
+    def get_disturbance_torque(self) -> np.ndarray:
+        return np.array([self.tq_x.disturbance, self.tq_y.disturbance, self.tq_z.disturbance]) + self.predicted_disturbance[3:6]
+
 
 if __name__ == "__main__":
     y = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
