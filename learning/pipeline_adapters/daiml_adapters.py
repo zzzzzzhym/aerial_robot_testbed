@@ -7,14 +7,12 @@ import trainer
 import validator
 
 class DaimlDataFactoryAdapter(Adapter):
-    def set_up(self, sample_data_menu: list, input_label_map_file: str) -> None:
+    def set_up(self, sample_data_menu: list, regenerate: bool = False) -> None:
         """The sample data menu is a subset of training data to inspect number of conditions and do normalization"""
         print("Setting up data factory...")
-        self.implementation = data_factory.DaimlDataFactory(
-            input_label_map_file
-        )
+        self.implementation = data_factory.DaimlDataFactory()
         self.implementation.set_num_of_conditions(sample_data_menu)
-        self.implementation.make_normalization_params(sample_data_menu)
+        self.implementation.make_normalization_params(sample_data_menu, regenerate=regenerate)
 
     def generate_artifacts(self, data_menu: list, can_inspect_data: bool=False) -> DataFactoryArtifacts:
         artifacts = DataFactoryArtifacts()

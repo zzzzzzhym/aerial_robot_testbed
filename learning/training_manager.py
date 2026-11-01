@@ -22,8 +22,9 @@ class TrainingPipeline:
         self.validator_adapter = validator_adapter
         self.model_saver = model_saver
 
-    def set_up(self, training_data_menu: list, validation_data_menu: list, input_label_map_file: str, can_inspect_data=False) -> None:
-        self.data_adapter.set_up(training_data_menu, input_label_map_file)
+    def set_up(self, training_data_menu: list, validation_data_menu: list, can_inspect_data=False) -> None:
+        # regenerate=True: training recomputes pipeline-owned normalization params from this data
+        self.data_adapter.set_up(training_data_menu, regenerate=True)
         training_data_artifacts = self.data_adapter.generate_artifacts(training_data_menu, can_inspect_data)
         validation_data_artifacts = self.data_adapter.generate_artifacts(validation_data_menu, can_inspect_data)
         self.model_adapter.set_up(training_data_artifacts)
@@ -54,8 +55,9 @@ class TestPipeline:
         self.validator_adapter = validator_adapter
         self.model_loader = model_loader
 
-    def set_up(self, data_menu: list, input_label_map_file: str, model_name: str) -> None:
-        self.data_adapter.set_up(data_menu, input_label_map_file)
+    def set_up(self, data_menu: list, model_name: str) -> None:
+        # regenerate=False (default): reuse the pipeline-owned training normalization for the test set
+        self.data_adapter.set_up(data_menu)
         data_artifacts = self.data_adapter.generate_artifacts(data_menu)
         model_artifacts = self.model_loader.generate_artifacts(model_name)
         self.validator_adapter.set_up(data_artifacts, model_artifacts)

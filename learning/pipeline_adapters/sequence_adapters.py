@@ -8,10 +8,10 @@ import validator
 
 
 class SequenceDataFactoryAdapter(Adapter):
-    def set_up(self, sample_data_menu: list, input_label_map_file: str) -> None:
+    def set_up(self, sample_data_menu: list, regenerate: bool = False) -> None:
         print("Setting up sequence data factory...")
-        self.implementation = data_factory.SequenceDataFactory(input_label_map_file)
-        self.implementation.make_normalization_params(sample_data_menu)
+        self.implementation = data_factory.SequenceDataFactory()
+        self.implementation.make_normalization_params(sample_data_menu, regenerate=regenerate)
 
     def generate_artifacts(self, data_menu: list, can_inspect_data: bool = False) -> DataFactoryArtifacts:
         artifacts = DataFactoryArtifacts()

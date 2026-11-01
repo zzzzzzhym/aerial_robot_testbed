@@ -1,0 +1,43 @@
+# Sequence model schema. Inputs match bemt_infused_multihead_simple_net (so the rotor-level
+# local wind velocity -- the key wind-effect sensing -- is included), but FLATTENED over the
+# time window: the sequence net has no multihead/shared-individual structure, it just consumes
+# the flat `input` list per frame. Label is the full sensed disturbance force.
+input: # list of data field names in the csv file
+  q:
+    - 0
+    - 1
+    - 2
+    - 3
+  v:
+    - 0
+    - 1
+    - 2
+  sensed_omega:
+    - 0
+    - 1
+    - 2
+  rotor_0_local_wind_velocity:
+    - 0
+    - 1
+    - 2
+  rotor_1_local_wind_velocity:
+    - 0
+    - 1
+    - 2
+  rotor_2_local_wind_velocity:
+    - 0
+    - 1
+    - 2
+  rotor_3_local_wind_velocity:
+    - 0
+    - 1
+    - 2
+  rotor_0_rotation_spd:
+  rotor_1_rotation_spd:
+  rotor_2_rotation_spd:
+  rotor_3_rotation_spd:
+label:
+  f_disturb_sensed_raw:
+    - 0
+    - 1
+    - 2

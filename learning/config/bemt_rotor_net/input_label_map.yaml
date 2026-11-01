@@ -1,0 +1,76 @@
+# control input is ommited because it is reflected in rotor rotation speed
+# given drone states and rotor speed, the model should be able to predict the acceleration
+input: # list of data feild names in the csv file
+  q:
+    - 0
+    - 1
+    - 2
+    - 3 
+  v:
+    - 0
+    - 1
+    - 2
+  sensed_omega:
+    - 0
+    - 1
+    - 2
+  rotor_0_local_wind_velocity:
+    - 0
+    - 1
+    - 2
+  rotor_1_local_wind_velocity:
+    - 0
+    - 1
+    - 2
+  rotor_2_local_wind_velocity:
+    - 0
+    - 1
+    - 2
+  rotor_3_local_wind_velocity:
+    - 0
+    - 1
+    - 2
+  rotor_0_rotation_spd:
+  rotor_1_rotation_spd:
+  rotor_2_rotation_spd:
+  rotor_3_rotation_spd:  
+shared_input:
+  q:
+    - 0
+    - 1
+    - 2
+    - 3 
+  v:
+    - 0
+    - 1
+    - 2
+  sensed_omega:
+    - 0
+    - 1
+    - 2
+individual_input:
+  - rotor_0_local_wind_velocity:
+      - 0
+      - 1
+      - 2
+    rotor_0_rotation_spd:
+  - rotor_1_local_wind_velocity:
+      - 0
+      - 1
+      - 2
+    rotor_1_rotation_spd:
+  - rotor_2_local_wind_velocity:
+      - 0
+      - 1
+      - 2
+    rotor_2_rotation_spd:
+  - rotor_3_local_wind_velocity:
+      - 0
+      - 1
+      - 2
+    rotor_3_rotation_spd:
+label: 
+  f_residual:
+    - 0
+    - 1
+    - 2

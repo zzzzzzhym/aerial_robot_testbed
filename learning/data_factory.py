@@ -266,14 +266,18 @@ class FittingFactory(DataFactory):
         return datasets
     
 class TrainingDataFactory(DataFactory):
-    def __init__(self, input_label_map_file: str) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.input_label_map = TrainingDataFactory.get_map(input_label_map_file)
+        # schema (input_label_map) is owned by the pipeline's config folder, not the data folder,
+        # so a given pipeline always has one schema (see learning/config/<pipeline>/input_label_map.yaml)
+        self.input_label_map = TrainingDataFactory.load_map_file(self.get_default_input_label_map_path())
         self.input_headers = TrainingDataFactory.extract_header_from_input_label_map(self.input_label_map["input"])
         self.label_headers = TrainingDataFactory.extract_header_from_input_label_map(self.input_label_map["label"])
         self.input_normalization, self.label_normalization = self.initialize_normalization_dict()
-        self.normalization_params_file_path = TrainingDataFactory.find_path_to_normalization_params_file(input_label_map_file)
-        self.config = TrainingDataFactory.load_config(self.get_default_config_path())        
+        # normalization params are also pipeline-owned (regenerated from training data each run,
+        # read back at test time) -- see make_normalization_params
+        self.normalization_params_file_path = self.get_default_normalization_params_path()
+        self.config = TrainingDataFactory.load_config(self.get_default_config_path())
 
     @staticmethod
     def get_map(map_file: str) -> dict:
@@ -281,6 +285,26 @@ class TrainingDataFactory(DataFactory):
         with open(map_file_path, 'r') as file:
             map = yaml.safe_load(file)
         return map
+
+    @staticmethod
+    def load_map_file(map_file_path: str) -> dict:
+        """Load an input_label_map from an absolute path (the config folder), without the
+        data/training prefix that get_map applies."""
+        with open(map_file_path, 'r') as file:
+            return yaml.safe_load(file)
+
+    @classmethod
+    def get_config_dir(cls) -> str:
+        """The pipeline's config folder (parent of its data_factory_config.yaml)."""
+        return os.path.dirname(cls.get_default_config_path())
+
+    @classmethod
+    def get_default_input_label_map_path(cls) -> str:
+        return os.path.join(cls.get_config_dir(), "input_label_map.yaml")
+
+    @classmethod
+    def get_default_normalization_params_path(cls) -> str:
+        return os.path.join(cls.get_config_dir(), "normalization_params.yaml")
 
     @staticmethod
     def extract_header_from_input_label_map(column_names: dict[list]) -> list[str]:
@@ -406,10 +430,13 @@ class TrainingDataFactory(DataFactory):
                     mean, scale = normalization[f"{field}_{dim}"].get_normalization_params()
                     section[field][dim] = {"mean": mean, "scale": scale}
 
-    def make_normalization_params(self, data_menu: list) -> None:
-        # if the normalization params file is not generated, generate it
-        if not os.path.exists(self.normalization_params_file_path):
-            print("Normalization params file not found, generating it and saving it to\n" + os.path.relpath(self.normalization_params_file_path))
+    def make_normalization_params(self, data_menu: list, regenerate: bool = False) -> None:
+        # regenerate=True (training) recomputes from the given data and overwrites, so a model
+        # always carries the stats of the data it was just trained on. regenerate=False (test)
+        # reuses the existing pipeline-owned params, so the test set is normalized with training
+        # stats. Falls back to generating if the file is missing.
+        if regenerate or not os.path.exists(self.normalization_params_file_path):
+            print("Generating normalization params and saving to\n" + os.path.relpath(self.normalization_params_file_path))
             self.normalize_data(data_menu)
             self.generate_normalization_params_file(self.normalization_params_file_path)
             print("Normalization params file generated")
@@ -495,8 +522,8 @@ class DaimlDataFactory(TrainingDataFactory):
     2. check which columns are input and which are labels
     3. generate LearningDataset and then LoaderSets for trainer
     4. normalize the data"""
-    def __init__(self, input_label_map_file: str) -> None:
-        super().__init__(input_label_map_file)
+    def __init__(self) -> None:
+        super().__init__()
         self.num_of_conditions = 0
 
     @staticmethod
@@ -570,8 +597,8 @@ class DaimlDataFactory(TrainingDataFactory):
 
 
 class SimpleDataFactory(TrainingDataFactory):
-    def __init__(self, input_label_map_file: str) -> None:
-        super().__init__(input_label_map_file)
+    def __init__(self) -> None:
+        super().__init__()
 
     @staticmethod
     def get_default_config_path():
@@ -630,8 +657,8 @@ class SequenceDataFactory(TrainingDataFactory):
     """Builds overlapping time windows from the time-ordered csv data for the sequence
     models. Windows never straddle two files (each file is one condition). Produces a pooled
     training DataLoader (full-minibatch training) plus per-condition datasets for evaluation."""
-    def __init__(self, input_label_map_file: str) -> None:
-        super().__init__(input_label_map_file)
+    def __init__(self) -> None:
+        super().__init__()
 
     @staticmethod
     def get_default_config_path():
@@ -691,8 +718,8 @@ class SequenceDataFactory(TrainingDataFactory):
 
 
 class RotorNetDataFactory(TrainingDataFactory):
-    def __init__(self, input_label_map_file: str) -> None:
-        self.input_label_map = TrainingDataFactory.get_map(input_label_map_file)
+    def __init__(self) -> None:
+        self.input_label_map = TrainingDataFactory.load_map_file(self.get_default_input_label_map_path())
         self.shared_input_headers = TrainingDataFactory.extract_header_from_input_label_map(self.input_label_map["shared_input"])
         self.individual_input_headers = []
         for member in self.input_label_map["individual_input"]:
@@ -700,8 +727,8 @@ class RotorNetDataFactory(TrainingDataFactory):
 
         self.label_headers = TrainingDataFactory.extract_header_from_input_label_map(self.input_label_map["label"])
         self.input_normalization, self.label_normalization = self.initialize_normalization_dict()
-        self.normalization_params_file_path = TrainingDataFactory.find_path_to_normalization_params_file(input_label_map_file)
-        self.config = TrainingDataFactory.load_config(self.get_default_config_path())     
+        self.normalization_params_file_path = self.get_default_normalization_params_path()
+        self.config = TrainingDataFactory.load_config(self.get_default_config_path())
 
     @staticmethod
     def get_default_config_path():

@@ -92,8 +92,7 @@ class TestSequenceModels(unittest.TestCase):
 
 class TestSequenceWindowing(unittest.TestCase):
     def setUp(self):
-        self.factory = data_factory.SequenceDataFactory(
-            os.path.join("template", "input_label_map_disturbance_force_label.yaml"))
+        self.factory = data_factory.SequenceDataFactory()   # auto-loads config/sequence_net/input_label_map.yaml
 
     def test_build_windows_shape(self):
         n, f, o, w = 100, len(self.factory.input_headers), len(self.factory.label_headers), self.factory.window

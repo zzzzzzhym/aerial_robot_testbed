@@ -29,9 +29,9 @@ import data_factory
 
 class TestNormalizationParams(unittest.TestCase):
     def setUp(self):
-        # use the shipped template map (21 input features, 3 label dims)
-        self.map_file = os.path.join("template", "input_label_map_disturbance_force_label.yaml")
-        self.factory = data_factory.SimpleDataFactory(self.map_file)
+        # SimpleDataFactory now auto-loads its pipeline schema from
+        # config/bemt_infused_multihead_simple_net/input_label_map.yaml (test is schema-agnostic)
+        self.factory = data_factory.SimpleDataFactory()
         self.n_in = len(self.factory.input_headers)
         self.n_lab = len(self.factory.label_headers)
 
@@ -92,7 +92,7 @@ class TestNormalizationParams(unittest.TestCase):
         """Second call (file now exists) must read back identical vectors."""
         self.factory.make_normalization_params(["dummy_file.csv"])
         first = self.factory.input_scale_vector.copy()
-        factory2 = data_factory.SimpleDataFactory(self.map_file)
+        factory2 = data_factory.SimpleDataFactory()
         factory2.normalization_params_file_path = self.tmp.name
         factory2.make_normalization_params(["dummy_file.csv"])
         np.testing.assert_allclose(factory2.input_scale_vector, first, rtol=1e-9)

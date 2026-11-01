@@ -1,0 +1,35 @@
+# control input is ommited because it is reflected in rotor rotation speed
+# given drone states and rotor speed, the model should be able to predict the acceleration
+input: # list of data feild names in the csv file
+  position:
+    - 0
+    - 1
+    - 2
+  q:
+    - 0
+    - 1
+    - 2
+    - 3 
+  v:
+    - 0
+    - 1
+    - 2
+  sensed_omega:
+    - 0
+    - 1
+    - 2
+  f_ctrl_input:  # x y axis is not needed because they are all 0
+    - 2
+  torque_ctrl_input:
+    - 0
+    - 1
+    - 2
+  rotor_0_rotation_spd:
+  rotor_1_rotation_spd:
+  rotor_2_rotation_spd:
+  rotor_3_rotation_spd:  
+label: 
+  f_disturb_sensed_raw:
+    - 0
+    - 1
+    - 2

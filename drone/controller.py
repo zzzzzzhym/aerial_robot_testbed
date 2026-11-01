@@ -211,22 +211,23 @@ class DroneController(simulation.scenario.Controller):
         self._log("f_disturb_est_bemt", self.f_disturb_bemt)
         self._log("torque_disturb_est_bemt", self.torque_disturb_bemt)
 
-        # windowed sequence model (GRU/TCN/ResMLP) + adaptive residual observer. f_ctrl_input /
-        # torque_ctrl_input are this tick's previous-step values (self.f/self.torque not yet
-        # updated) -- a one-step lag, unavoidable in closed loop. The net predicts disturbance
-        # FORCE in body frame; the adaptive filters fit the measured-minus-predicted residual.
+        # windowed sequence model (GRU/TCN/ResMLP) + adaptive residual observer. Inputs match
+        # the bemt_infused schema (incl. rotor-level local wind velocity) flattened over the
+        # window; the net predicts disturbance FORCE in body frame and the adaptive filters fit
+        # the measured-minus-predicted residual. Feed keys must match config/sequence_net/input_label_map.yaml.
         self.sequence_disturbance_estimator.step_disturbance(
             {
-                "position":             sensor_data.position,
-                "q":                    sensor_data.q,
-                "v":                    sensor_data.v,
-                "sensed_omega":         sensor_data.omega,
-                "f_ctrl_input":         sensor_data.pose @ self.f,
-                "torque_ctrl_input":    self.torque,
-                "rotor_0_rotation_spd": sensor_data.rotors.rotors[0].rotation_speed,
-                "rotor_1_rotation_spd": sensor_data.rotors.rotors[1].rotation_speed,
-                "rotor_2_rotation_spd": sensor_data.rotors.rotors[2].rotation_speed,
-                "rotor_3_rotation_spd": sensor_data.rotors.rotors[3].rotation_speed,
+                "q":                          sensor_data.q,
+                "v":                          sensor_data.v,
+                "sensed_omega":               sensor_data.omega,
+                "rotor_0_local_wind_velocity": sensor_data.rotors.rotors[0].local_wind_velocity,
+                "rotor_1_local_wind_velocity": sensor_data.rotors.rotors[1].local_wind_velocity,
+                "rotor_2_local_wind_velocity": sensor_data.rotors.rotors[2].local_wind_velocity,
+                "rotor_3_local_wind_velocity": sensor_data.rotors.rotors[3].local_wind_velocity,
+                "rotor_0_rotation_spd":       sensor_data.rotors.rotors[0].rotation_speed,
+                "rotor_1_rotation_spd":       sensor_data.rotors.rotors[1].rotation_speed,
+                "rotor_2_rotation_spd":       sensor_data.rotors.rotors[2].rotation_speed,
+                "rotor_3_rotation_spd":       sensor_data.rotors.rotors[3].rotation_speed,
             },
             self.get_sensed_disturbance(sensor_data),
             tracking_error
