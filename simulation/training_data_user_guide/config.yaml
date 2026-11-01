@@ -1,7 +1,7 @@
 # Training-data generation config: tuning variables for training_data_user_guide.py.
 #
 # Pick which use case to run. One of: training | validation | fitting | fitting_validation
-selected_config: training
+selected_config: validation
 
 # Controller tracking error margin added to every wall distance, to prevent
 # collision with the wall (meters).
@@ -55,9 +55,9 @@ configs:
       args: [20]
     wind_conditions:
       style: grid
-      x: [-2.0, 0.0]
+      x: [0.0]
       y: [0.0]
-      z: [-4.0, -1.0, 1.0, 4.0]
+      z: [-5.0, 5.0]
 
   fitting:
     t_data_collection: 12.0
