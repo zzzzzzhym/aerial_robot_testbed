@@ -5,3 +5,5 @@ num_epochs: 500
 patience: 80          # stop if validation does not improve for this many epochs (0 disables)
 use_float32: true     # sequence models train fine in float32 and much faster than double
 device: auto          # auto | cpu | cuda  (auto uses GPU if available; GRUs are far faster on GPU)
+input_noise_std: 0.2  # train-only Gaussian jitter on normalized inputs (0 disables). 0.2 was the
+                      # best regularizer for the OOD/near-wall shift (see claude/learning/WORKLOG.md)

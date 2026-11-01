@@ -530,6 +530,9 @@ class SequenceTrainer:
         self.net.to(self.device, self.dtype)
 
         self.criterion = nn.MSELoss()
+        # input-noise augmentation std (normalized units); 0 disables. Targets the OOD input
+        # shift directly -- the best single regularizer found (see claude/learning/WORKLOG.md).
+        self.input_noise_std = float(self.config.get("input_noise_std", 0.0))
         self.optimizer = optim.Adam(self.net.parameters(),
                                     lr=self.config["learning_rate"],
                                     weight_decay=self.config.get("weight_decay", 0.0))
@@ -563,6 +566,8 @@ class SequenceTrainer:
             for batch in self.train_loader:
                 x = batch['input'].to(self.device, self.dtype)
                 y = batch['output'].to(self.device, self.dtype)
+                if self.input_noise_std > 0:
+                    x = x + self.input_noise_std * torch.randn_like(x)   # train-only input jitter
                 self.optimizer.zero_grad()
                 loss = self.criterion(self.net(x), y)
                 loss.backward()
