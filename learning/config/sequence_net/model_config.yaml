@@ -4,7 +4,7 @@
 #   gru     : plain stacked GRU over the window
 #   res_gru : stacked GRU with residual skip between layers (best in exploration)
 #   tcn     : dilated causal 1D-conv stack over the window (FIR filter; parallel, stateless)
-model_type: res_gru
+model_type: gru
 
 ResMLP:
   width: 128

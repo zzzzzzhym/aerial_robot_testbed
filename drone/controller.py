@@ -26,13 +26,8 @@ class DisturbanceEstimatorChoice(enum.Enum):
 class DroneController(simulation.scenario.Controller):
     def __init__(self, drone: params.Multicopter) -> None:
         # config
-        disturbance_model_name = "wind_free_space_training_diaml"
-        # disturbance_model_name = "wind_free_space_training_in_house_sim_diaml"
-        # disturbance_model_name = "wind_near_wall_wo_bemt_in_control_train_xz_wind"
-        # disturbance_model_name = "wind_near_wall_bemt_in_control_train_xz_wind"
-        # disturbance_model_name = "wind_near_wall_wo_bemt_in_control_far_from_wall"
-        # bemt_disturbance_model_name = "wind_free_space_training_bemt"
-        bemt_disturbance_model_name = "wind_free_space_training_cfd_our_proposal_resmlp"
+        disturbance_model_name = "wind_free_space_training_cfd_daiml.pth"
+        bemt_disturbance_model_name = "wind_free_space_training_cfd_our_proposal_simplenet"
         # bemt_disturbance_model_name = "wind_free_space_training_in_house_sim_bemt"
         # bemt_disturbance_model_name = "wind_near_wall_bemt_fitting"
         # windowed sequence model (GRU/TCN/ResMLP) used by the sequence disturbance estimator
