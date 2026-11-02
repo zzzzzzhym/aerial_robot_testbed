@@ -26,7 +26,7 @@ class DisturbanceEstimatorChoice(enum.Enum):
 class DroneController(simulation.scenario.Controller):
     def __init__(self, drone: params.Multicopter) -> None:
         # config
-        disturbance_model_name = "wind_free_space_training_cfd_daiml.pth"
+        disturbance_model_name = "wind_free_space_training_cfd_daiml"
         bemt_disturbance_model_name = "wind_free_space_training_cfd_our_proposal_simplenet"
         # bemt_disturbance_model_name = "wind_free_space_training_in_house_sim_bemt"
         # bemt_disturbance_model_name = "wind_near_wall_bemt_fitting"
@@ -38,8 +38,8 @@ class DroneController(simulation.scenario.Controller):
         propeller_lookup_table_name = "p600_single_rotor_after_bemt_fit"
         # propeller_lookup_table_name = "p600_single_rotor_quadratic"
         # select the closed-loop estimator here; the rest run in shadow (stepped + logged)
-        self.disturbance_estimator_choice = DisturbanceEstimatorChoice.SEQUENCE
-        self.is_using_inflow_model = True
+        self.disturbance_estimator_choice = DisturbanceEstimatorChoice.BASELINE
+        self.is_using_inflow_model = False
         print("DroneController: using inflow model: ", self.is_using_inflow_model)
         print("DroneController: closed-loop disturbance estimator: ", self.disturbance_estimator_choice.name)
 
