@@ -16,6 +16,7 @@ class Manager:
         self.scenario: scenario_factory.scenario = None
         self.engine: engine = None
         self.result = None
+        self.auto_dump_full_log = True   # auto-save a full (all-fields) timestamped CSV to data/runs/
 
     def set_up(self, 
             #    trajectory=drone.trajectory.RandomWaypoints(300, True, True),    # when test training effect, we may want to use random subtrajectory set
@@ -39,6 +40,8 @@ class Manager:
     def run(self, t_end: float) -> None:
         self.engine.run_simulation(self.logger, t_end)
         self.logger.convert_buffer_to_output()
+        if self.auto_dump_full_log:
+            self.logger.dump_full_log()
         self.result = plotter.Plotter(self.engine.t_span, self.engine.dt_log)
 
     def save_result_as_csv(self, file_name: str) -> None:

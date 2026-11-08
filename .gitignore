@@ -10,3 +10,6 @@ env/
 
 paper_results/*.pdf
 paper_results/*.png
+
+# Auto-saved full simulation log dumps (all fields, timestamped scratch data)
+data/runs/

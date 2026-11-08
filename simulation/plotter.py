@@ -678,7 +678,7 @@ class Plotter:
                     zorder=3*i + 4
                 )
 
-        axs[1].set_ylabel("Rotor Speed [RPM]")
+        axs[1].set_ylabel("Rotor Speed [rad/s]")
         axs[1].legend(loc='upper right')
 
         # Optional: Grid and layout
