@@ -453,7 +453,7 @@ class PropellerLookupTable:
         """
         _DEFAULT_U_FREE_X_RANGE = (0, 1, 2, 3, 4, 5, 7, 10, 13, 15, 17, 20) # m/s
         _DEFAULT_PITCH_RANGE = tuple(np.deg2rad([-90, -60, -45, -30, -15, 0, 15, 30, 45, 60, 90]))  # rad
-        _DEFAULT_OMEGA_RANGE = (0, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1500, 2000, 2600)  # rad/s
+        _DEFAULT_OMEGA_RANGE = (0, 200, 300, 400, 500, 600, 700, 800, 900, 1000)  # rad/s
 
         def __init__(self, blade: Optional[blade_params.Blade] = None,
                      omega_range: Optional[np.ndarray] = None,

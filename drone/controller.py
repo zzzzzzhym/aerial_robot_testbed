@@ -38,8 +38,8 @@ class DroneController(simulation.scenario.Controller):
         propeller_lookup_table_name = "p600_single_rotor_after_bemt_fit"
         # propeller_lookup_table_name = "p600_single_rotor_quadratic"
         # select the closed-loop estimator here; the rest run in shadow (stepped + logged)
-        self.disturbance_estimator_choice = DisturbanceEstimatorChoice.BASELINE
-        self.is_using_inflow_model = False
+        self.disturbance_estimator_choice = DisturbanceEstimatorChoice.SEQUENCE
+        self.is_using_inflow_model = True
         print("DroneController: using inflow model: ", self.is_using_inflow_model)
         print("DroneController: closed-loop disturbance estimator: ", self.disturbance_estimator_choice.name)
 
