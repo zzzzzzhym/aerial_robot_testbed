@@ -11,6 +11,18 @@ class Plotter:
         self.t_span = t_span
         self.dt = dt
 
+    @classmethod
+    def from_output(cls, output: dict, dt: float = 0.01):
+        """Build a Plotter from a logged output dict alone -- no simulation Manager/Engine needed.
+        t_span is reconstructed from the number of logged rows and dt (engine default 0.01), so a
+        saved dump can be loaded and plotted standalone:
+
+            output = sim_logger.Logger.load_full_log()   # latest dump
+            plotter.Plotter.from_output(output).plot_disturbance_force(output)
+        """
+        n = len(next(iter(output.values())))
+        return cls(np.arange(n) * dt, dt)
+
     def make_plots(self, logger_output: np.ndarray, has_animation=False):
         # plot
         self.plot_3d_trace(logger_output)

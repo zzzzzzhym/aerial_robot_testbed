@@ -4,9 +4,22 @@ import yaml
 import numpy as np
 import pandas as pd
 import pickle
+from ast import literal_eval
 from datetime import datetime
 
 import common_utils
+
+
+# list/matrix cells are written as "[...]"; literal_eval rejects inf/nan, so fall back to a
+# restricted eval (no builtins) that understands those tokens.
+_PARSE_NS = {"inf": float("inf"), "nan": float("nan"), "__builtins__": {}}
+
+
+def _parse_cell(x):
+    try:
+        return literal_eval(x)
+    except (ValueError, SyntaxError):
+        return eval(x, dict(_PARSE_NS))
 
 
 class Logger:
@@ -79,8 +92,7 @@ class Logger:
         and uses no colons (Windows/WSL-safe). Returns the written path."""
         if not self.output:
             self.convert_buffer_to_output()
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        out_dir = os.path.join(os.path.dirname(current_dir), "data", folder)
+        out_dir = Logger.dumps_dir(folder)
         os.makedirs(out_dir, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         name = f"{stamp}_{tag}.csv" if tag else f"{stamp}.csv"
@@ -100,6 +112,43 @@ class Logger:
         df.to_csv(file_path, index=False, float_format='%.17f')
         print("Full log dumped to:\n" + common_utils.file_manager.relative_to_root(file_path))
         return file_path
+
+    @staticmethod
+    def dumps_dir(folder: str = "runs") -> str:
+        """Absolute path to the full-log dump folder (data/<folder>/)."""
+        return common_utils.file_manager.find_path_to_folder(["data", folder])
+
+    @staticmethod
+    def latest_dump(folder: str = "runs") -> str:
+        """Path to the most recent full-log dump. Filenames are timestamp-first, so lexical
+        sort is chronological."""
+        out_dir = Logger.dumps_dir(folder)
+        if not os.path.isdir(out_dir):
+            raise FileNotFoundError(f"no dump folder yet: {out_dir}")
+        files = [f for f in os.listdir(out_dir) if f.endswith(".csv")]
+        if not files:
+            raise FileNotFoundError(f"no full-log dumps in {out_dir}")
+        return os.path.join(out_dir, sorted(files)[-1])
+
+    @staticmethod
+    def load_full_log(file_path: str = None, folder: str = "runs") -> dict:
+        """Recover a full-log dump into an `output`-style dict ({field: np.ndarray}) with native
+        shapes restored (scalars [N], vectors [N,3], matrices [N,3,3]). If file_path is None,
+        loads the LATEST dump in data/<folder>/. Plot it with Plotter.from_output:
+
+            output = sim_logger.Logger.load_full_log()          # latest dump
+            plotter.Plotter.from_output(output).plot_disturbance_force(output)
+        """
+        if file_path is None:
+            file_path = Logger.latest_dump(folder)
+        df = pd.read_csv(file_path)
+        output = {}
+        for col in df.columns:
+            series = df[col]
+            if series.size and isinstance(series.iloc[0], str):   # vector/matrix cell
+                series = series.map(_parse_cell)
+            output[col] = np.array(series.to_list())
+        return output
 
     def generate_column_map(self) -> dict:
         """Generate a mapping of CSV column names to their index positions."""
