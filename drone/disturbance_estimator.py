@@ -334,7 +334,7 @@ class SequenceNetDisturbanceEstimator(BaselineDisturbanceEstimator):
         self.buffer = collections.deque(maxlen=self.window)
         self.predicted_disturbance = np.zeros(6)
 
-        # tune down measurement noise to trust the net prediction and smooth the residual
+        # tune down measurement noise to trust the sensed disturbance more
         self.f_x.r = self.f_x.r*0.1
         self.f_y.r = self.f_y.r*0.1
         self.f_z.r = self.f_z.r*0.1
