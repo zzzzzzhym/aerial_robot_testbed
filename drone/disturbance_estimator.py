@@ -1,4 +1,5 @@
 import collections
+import os
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,6 +7,7 @@ import torch
 
 from learning import model
 from learning import sequence_model
+from learning import bilinear_basis_model
 
 class UnitDisturbance:
     """disturbance in a single dimension
@@ -375,6 +377,54 @@ class SequenceNetDisturbanceEstimator(BaselineDisturbanceEstimator):
 
     def get_disturbance_force(self) -> np.ndarray:
         return np.array([self.f_x.disturbance, self.f_y.disturbance, self.f_z.disturbance]) + self.predicted_disturbance[0:3]
+
+    def get_disturbance_torque(self) -> np.ndarray:
+        return np.array([self.tq_x.disturbance, self.tq_y.disturbance, self.tq_z.disturbance]) + self.predicted_disturbance[3:6]
+
+
+class BilinearBasisDisturbanceEstimator(BaselineDisturbanceEstimator):
+    """Bilinear-basis disturbance estimator (phi/a split with online RLS).
+
+    Delegates the FORCE estimate to learning.bilinear_basis_model.BilinearBasisEstimator: a
+    wind-magnitude-FREE phi basis (so the deployed net never extrapolates on an out-of-domain wind)
+    times coefficients `a` that are recovered ON-THE-FLY by recursive least squares from the measured
+    disturbance -- the adaptation IS the force estimator (no separate residual observer, unlike the
+    sequence net). The net predicts force only; torque is handled by the inherited adaptive filters.
+
+    step_disturbance takes a dict {field_name: value} covering the basis feature fields
+    (q, v, sensed_omega, and per-rotor rotation_spd / sensed_wind_velocity / local_wind_velocity /
+    velocity -- see bilinear_basis_model.basis_frame_from_fields), plus measured_disturbance and
+    tracking_error. lam_ff is the RLS forgetting factor (lower = faster adaptation to a novel wind).
+    """
+    def __init__(self, model_name: str, dt: float, lam_ff: float = 0.98, p0: float = 10.0) -> None:
+        super().__init__(dt)   # inherits the 6 UnitDisturbance(1, dt) filters (torque uses tq_*)
+        ckpt_path = os.path.join(os.path.dirname(bilinear_basis_model.__file__),
+                                 "model", model_name + ".pth")
+        self.estimator = bilinear_basis_model.BilinearBasisEstimator(ckpt_path, lam_ff=lam_ff, p0=p0)
+        self.predicted_disturbance = np.zeros(6)
+
+        # torque residual filters: trust the sensed disturbance more (match the sequence estimator)
+        self.tq_x.r = self.tq_x.r*0.1
+        self.tq_y.r = self.tq_y.r*0.1
+        self.tq_z.r = self.tq_z.r*0.1
+
+    def predict_disturbance(self, field_values: dict) -> np.ndarray:
+        """Causal force prediction from the current RLS coefficients: [f_x, f_y, f_z, 0, 0, 0]."""
+        force = self.estimator.predict(field_values)
+        return np.hstack([force, np.zeros(3)])
+
+    def step_disturbance(self, field_values: dict, measured_disturbance: np.ndarray,
+                         tracking_error: np.ndarray) -> None:
+        # predict with the current coefficients, then RLS-adapt them on the measured force
+        self.predicted_disturbance = self.predict_disturbance(field_values)
+        self.estimator.adapt(measured_disturbance[0:3])
+        # torque has no net term -> let the adaptive filters estimate the full torque residual
+        self.tq_x.step_estimator(np.array([[1]]), measured_disturbance[3] - self.predicted_disturbance[3], tracking_error[3])
+        self.tq_y.step_estimator(np.array([[1]]), measured_disturbance[4] - self.predicted_disturbance[4], tracking_error[4])
+        self.tq_z.step_estimator(np.array([[1]]), measured_disturbance[5] - self.predicted_disturbance[5], tracking_error[5])
+
+    def get_disturbance_force(self) -> np.ndarray:
+        return self.estimator.get_disturbance_force()
 
     def get_disturbance_torque(self) -> np.ndarray:
         return np.array([self.tq_x.disturbance, self.tq_y.disturbance, self.tq_z.disturbance]) + self.predicted_disturbance[3:6]
