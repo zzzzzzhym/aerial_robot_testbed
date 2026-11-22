@@ -180,6 +180,15 @@ class P600(Quadcopter):
         self.f_motor_max = 20.0  # maximum possible thrust per motor [N] 
         self.f_motor_min = 0.1   # minimum possible thrust per motor [N]
 
+class MockNeuralFlyByP600(P600):
+    """P600 re-massed to the Neural-Fly thrust-to-weight ratio of 2.2 (m = 4*26.17/(2.2*g) = 4.85 kg).
+    Max rotor thrust 26.17 N is P600_SimData at 600 rad/s. The external sim (.art) mass must match.
+    """
+    def __init__(self):
+        super().__init__()
+        self.f_motor_max = 26.17  # [N]
+        self.m = 4*self.f_motor_max/(2.2*Environment.g)
+
 class TrackingOnSE3(Quadcopter):
     """
     parameters come from 

@@ -110,6 +110,47 @@ class Figure8(TrajectoryReference):
         self.x_d_dot3[2] = -self.x_d_dot3[2]
         self.x_d_dot4[2] = -self.x_d_dot4[2]
 
+class NeuralFlyFigure8(TrajectoryReference):
+    """Neural-Fly wind-tunnel figure-8 (O'Connell et al. 2022, official repo), vertical x-z plane:
+        x_d(t) = [a + a*sin(w t), 0, b*sin(2 w t)],  a = 1.25 m, b = 0.75 m, w = 1 rad/s (lap = 2*pi s)
+    Shifted by a in x so the path stays in x in [0, 2a] (clear of a wall at negative x).
+    Paper protocol: 1 warm-up lap + 6 recorded laps. init_x / init_v match the reference at t = 0.
+    """
+    def __init__(self, a: float = 1.25, b: float = 0.75, omega: float = 1.0) -> None:
+        super().__init__()
+        self.a = a
+        self.b = b
+        self.omega = omega
+        self.lap_period = 2*np.pi/omega
+        self.n_warmup_laps = 1
+        self.n_eval_laps = 6
+        self.set_init_state()
+
+    def set_init_state(self) -> None:
+        self.step_reference_state(0.0)
+        self.init_x = self.x_d.copy()
+        self.init_v = self.v_d.copy()
+        self.init_omega = np.array([0.0, 0.0, 0.0])
+        self.init_pose = np.eye(3)
+
+    def get_total_time(self) -> float:
+        """Duration of the paper protocol (warm-up + recorded laps)."""
+        return (self.n_warmup_laps + self.n_eval_laps)*self.lap_period
+
+    def get_eval_start_time(self) -> float:
+        return self.n_warmup_laps*self.lap_period
+
+    def step_reference_state(self, t) -> None:
+        a, b, w = self.a, self.b, self.omega
+        s1, c1 = np.sin(w*t), np.cos(w*t)
+        s2, c2 = np.sin(2*w*t), np.cos(2*w*t)
+        # k-th derivatives of a*sin(w t) (x) and b*sin(2w t) (z)
+        x_terms = [a*s1, a*w*c1, -a*w**2*s1, -a*w**3*c1, a*w**4*s1]
+        z_terms = [b*s2, 2*b*w*c2, -4*b*w**2*s2, -8*b*w**3*c2, 16*b*w**4*s2]
+        out = [np.array([x, 0.0, z]) for x, z in zip(x_terms, z_terms)]
+        out[0][0] += a
+        self.x_d, self.v_d, self.x_d_dot2, self.x_d_dot3, self.x_d_dot4 = out
+
 class SpiralAndSpin(TrajectoryReference):
     def step_reference_state(self, t) -> None:
         self.x_d = np.array([0.4*t,
