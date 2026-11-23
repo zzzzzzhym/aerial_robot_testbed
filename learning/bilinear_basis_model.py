@@ -135,6 +135,11 @@ class BilinearBasisEstimator:
     The RLS here uses a single covariance P shared across the 3 force axes with a per-axis
     coefficient column a[:,axis]. Because phi, lam and P0 are identical across axes, this is
     numerically identical to running three independent per-axis RLS filters (the experiment form).
+
+    Torque reuses the same basis: tau = [phi(state); 1] @ a_torque, a_torque in R^{(K+1)x3} (N m).
+    The basis was trained on force only, so a_torque has no trained prior (starts at zero) and is
+    recovered online by the same RLS. P (and the gain) do not depend on the measurement, so the
+    torque columns share P with the force columns and the force estimate is unchanged.
     """
     def __init__(self, ckpt_path: str, lam_ff: float = 0.98, p0: float = 10.0,
                  use_prior: bool = True):
@@ -155,9 +160,11 @@ class BilinearBasisEstimator:
 
     def reset(self):
         self.a = self.a0.copy() if self.use_prior else np.zeros_like(self.a0)
+        self.a_torque = np.zeros((self.K + 1, 3))      # no trained torque prior
         self.P = np.eye(self.K + 1) * self.p0
         self.buffer = collections.deque(maxlen=self.window)
         self.pred = np.zeros(3)
+        self.pred_torque = np.zeros(3)
         self._phi_cur = None
 
     def _phi(self, field_values: dict) -> np.ndarray:
@@ -173,27 +180,37 @@ class BilinearBasisEstimator:
             return self.net(torch.from_numpy(xn).float()).numpy()[0]   # [K+1]
 
     def predict(self, field_values: dict) -> np.ndarray:
-        """Compute phi for this tick and return the physical disturbance-force prediction."""
+        """Compute phi for this tick and return the physical disturbance-force prediction
+        (the torque prediction is computed alongside, see get_disturbance_torque)."""
         self._phi_cur = self._phi(field_values)
         self.pred = self._phi_cur @ self.a            # a is already in physical units
+        self.pred_torque = self._phi_cur @ self.a_torque
         return self.pred
 
-    def adapt(self, measured_disturbance_force) -> None:
-        """RLS update of a (and shared P) from the measured disturbance for the last tick."""
+    def adapt(self, measured_disturbance_force, measured_disturbance_torque=None) -> None:
+        """RLS update of a (and shared P) from the measured disturbance for the last tick.
+        If measured_disturbance_torque is given, a_torque is updated with the same gain."""
         phi = self._phi_cur
         y = np.asarray(measured_disturbance_force, float).reshape(-1)[:3]
         Pphi = self.P @ phi
         g = Pphi / (self.lam_ff + phi @ Pphi)
         err = y - phi @ self.a                         # [3]
         self.a = self.a + np.outer(g, err)
+        if measured_disturbance_torque is not None:
+            y_torque = np.asarray(measured_disturbance_torque, float).reshape(-1)[:3]
+            self.a_torque = self.a_torque + np.outer(g, y_torque - phi @ self.a_torque)
         self.P = (self.P - np.outer(g, Pphi)) / self.lam_ff
 
-    def step(self, field_values: dict, measured_disturbance_force=None) -> np.ndarray:
+    def step(self, field_values: dict, measured_disturbance_force=None,
+             measured_disturbance_torque=None) -> np.ndarray:
         """Causal step: predict with current a, then (if a measurement is given) adapt."""
         self.predict(field_values)
         if measured_disturbance_force is not None:
-            self.adapt(measured_disturbance_force)
+            self.adapt(measured_disturbance_force, measured_disturbance_torque)
         return self.pred
 
     def get_disturbance_force(self) -> np.ndarray:
         return self.pred
+
+    def get_disturbance_torque(self) -> np.ndarray:
+        return self.pred_torque

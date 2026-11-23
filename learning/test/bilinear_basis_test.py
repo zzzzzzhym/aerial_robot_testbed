@@ -9,6 +9,7 @@ Covers the correctness-critical pieces of learning/bilinear_basis_model.py:
      wind relative vector leaves it unchanged); the wind magnitude never enters the frame.
   4. Streaming estimator: predict/adapt shapes, and RLS converges on a synthetic linear target.
   5. Shared-P RLS == three independent per-axis RLS filters (the equivalence the module relies on).
+  6. Torque on the same basis: starts at zero, converges on a linear target, leaves force untouched.
 
 Run from the repo root:
     python -m unittest learning.test.bilinear_basis_test
@@ -182,6 +183,45 @@ class TestEstimator(unittest.TestCase):
             est.adapt(y)
         ref = np.stack(a_ax, axis=1)              # [d, 3]
         np.testing.assert_allclose(est.a, ref, atol=1e-9)
+
+
+class TestEstimatorTorque(unittest.TestCase):
+    """Torque reuses the force basis: tau = phi @ a_torque, a_torque by the same (shared-P) RLS."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.ckpt = os.path.join(self.tmp, "ckpt.pth")
+        _make_ckpt(self.ckpt)
+
+    def test_torque_starts_at_zero(self):
+        est = BilinearBasisEstimator(self.ckpt)
+        est.predict(_fields(0))
+        np.testing.assert_array_equal(est.get_disturbance_torque(), np.zeros(3))
+
+    def test_force_unchanged_by_torque_adaptation(self):
+        with_torque = BilinearBasisEstimator(self.ckpt, lam_ff=0.97, p0=5.0)
+        force_only = BilinearBasisEstimator(self.ckpt, lam_ff=0.97, p0=5.0)
+        rng = np.random.default_rng(7)
+        for t in range(50):
+            fv = _fields(t)
+            f, tq = rng.normal(size=3), rng.normal(size=3)
+            with_torque.step(fv, measured_disturbance_force=f, measured_disturbance_torque=tq)
+            force_only.step(fv, measured_disturbance_force=f)
+        np.testing.assert_array_equal(with_torque.a, force_only.a)
+        np.testing.assert_array_equal(with_torque.P, force_only.P)
+        np.testing.assert_array_equal(force_only.a_torque, np.zeros_like(force_only.a_torque))
+
+    def test_torque_rls_converges_on_linear_target(self):
+        est = BilinearBasisEstimator(self.ckpt, lam_ff=1.0, p0=1e3)
+        rng = np.random.default_rng(1)
+        a_true = rng.normal(size=(est.K + 1, 3))
+        errs = []
+        for t in range(400):
+            fv = _fields(t)
+            est.predict(fv)
+            tq = est._phi_cur @ a_true
+            errs.append(np.linalg.norm(est.get_disturbance_torque() - tq))
+            est.adapt(np.zeros(3), tq)
+        self.assertLess(np.mean(errs[-20:]), 5e-3)
 
 
 if __name__ == "__main__":

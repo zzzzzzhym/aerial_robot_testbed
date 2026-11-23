@@ -389,7 +389,8 @@ class BilinearBasisDisturbanceEstimator(BaselineDisturbanceEstimator):
     wind-magnitude-FREE phi basis (so the deployed net never extrapolates on an out-of-domain wind)
     times coefficients `a` that are recovered ON-THE-FLY by recursive least squares from the measured
     disturbance -- the adaptation IS the force estimator (no separate residual observer, unlike the
-    sequence net). The net predicts force only; torque is handled by the inherited adaptive filters.
+    sequence net). Torque reuses the same phi basis with its own RLS coefficients (as DAIML reuses its
+    phi for torque); the basis was trained on force only, so the torque coefficients start at zero.
 
     step_disturbance takes a dict {field_name: value} covering the basis feature fields
     (q, v, sensed_omega, and per-rotor rotation_spd / sensed_wind_velocity / local_wind_velocity /
@@ -403,31 +404,23 @@ class BilinearBasisDisturbanceEstimator(BaselineDisturbanceEstimator):
         self.estimator = bilinear_basis_model.BilinearBasisEstimator(ckpt_path, lam_ff=lam_ff, p0=p0)
         self.predicted_disturbance = np.zeros(6)
 
-        # torque residual filters: trust the sensed disturbance more (match the sequence estimator)
-        self.tq_x.r = self.tq_x.r*0.1
-        self.tq_y.r = self.tq_y.r*0.1
-        self.tq_z.r = self.tq_z.r*0.1
-
     def predict_disturbance(self, field_values: dict) -> np.ndarray:
-        """Causal force prediction from the current RLS coefficients: [f_x, f_y, f_z, 0, 0, 0]."""
+        """Causal prediction from the current RLS coefficients: [f_x, f_y, f_z, tq_x, tq_y, tq_z]."""
         force = self.estimator.predict(field_values)
-        return np.hstack([force, np.zeros(3)])
+        return np.hstack([force, self.estimator.get_disturbance_torque()])
 
     def step_disturbance(self, field_values: dict, measured_disturbance: np.ndarray,
                          tracking_error: np.ndarray) -> None:
-        # predict with the current coefficients, then RLS-adapt them on the measured force
+        # predict with the current coefficients, then RLS-adapt them on the measured force and torque
+        # (tracking_error is unused: the RLS adapts on the measured disturbance only)
         self.predicted_disturbance = self.predict_disturbance(field_values)
-        self.estimator.adapt(measured_disturbance[0:3])
-        # torque has no net term -> let the adaptive filters estimate the full torque residual
-        self.tq_x.step_estimator(np.array([[1]]), measured_disturbance[3] - self.predicted_disturbance[3], tracking_error[3])
-        self.tq_y.step_estimator(np.array([[1]]), measured_disturbance[4] - self.predicted_disturbance[4], tracking_error[4])
-        self.tq_z.step_estimator(np.array([[1]]), measured_disturbance[5] - self.predicted_disturbance[5], tracking_error[5])
+        self.estimator.adapt(measured_disturbance[0:3], measured_disturbance[3:6])
 
     def get_disturbance_force(self) -> np.ndarray:
-        return self.estimator.get_disturbance_force()
+        return self.predicted_disturbance[0:3]
 
     def get_disturbance_torque(self) -> np.ndarray:
-        return np.array([self.tq_x.disturbance, self.tq_y.disturbance, self.tq_z.disturbance]) + self.predicted_disturbance[3:6]
+        return self.predicted_disturbance[3:6]
 
 
 if __name__ == "__main__":

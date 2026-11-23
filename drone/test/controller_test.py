@@ -86,6 +86,7 @@ class TestTorqueDisturbanceCompensation(unittest.TestCase):
         controller.torque_disturb_base = np.array([0.0, 0.5, 0.0])
         controller.torque_disturb_bemt = np.zeros(3)
         controller.torque_disturb_seq = np.array([0.0, 0.0, 1.0])
+        controller.torque_disturb_bilinear = np.array([0.3, 0.0, 0.0])
         return controller
 
     def test_compensation_cancels_selected_estimate(self):
@@ -93,6 +94,8 @@ class TestTorqueDisturbanceCompensation(unittest.TestCase):
         np.testing.assert_allclose(controller.get_torque_disturb_compensation(), [-0.1, 2.0, 0.0])
         controller.disturbance_estimator_choice = DisturbanceEstimatorChoice.SEQUENCE
         np.testing.assert_allclose(controller.get_torque_disturb_compensation(), [0.0, 0.0, -1.0])
+        controller.disturbance_estimator_choice = DisturbanceEstimatorChoice.BILINEAR
+        np.testing.assert_allclose(controller.get_torque_disturb_compensation(), [-0.3, 0.0, 0.0])
 
     def test_compensation_saturates(self):
         controller = self.make_controller(DisturbanceEstimatorChoice.PURE_DAIML)
@@ -118,7 +121,8 @@ class TestTorqueDisturbanceCompensation(unittest.TestCase):
             controller.step_torque_disturb_compensation()
         np.testing.assert_allclose(controller.torque_disturb_compensation, [-0.1, 2.0, 0.0], atol=1e-9)
 
-    def test_daiml_torque_axes_get_omega_tracking_error(self):
+    def make_controller_with_mock_estimators(self):
+        """Controller whose estimators are mocks, ready for step_disturbance_estimator."""
         controller = self.make_controller(DisturbanceEstimatorChoice.PURE_DAIML)
         controller._log_data = {}
         controller.e_v = np.array([1.0, 2.0, 3.0])
@@ -128,14 +132,18 @@ class TestTorqueDisturbanceCompensation(unittest.TestCase):
         controller.get_sensed_disturbance = lambda sensor_data: np.zeros(6)
         controller.get_predicted_air_force = lambda sensor_data: (np.zeros(3), np.zeros(3))
         for name in ["disturbance_estimator", "baseline_disturbance_estimator",
-                     "bemt_disturbance_estimator", "sequence_disturbance_estimator"]:
+                     "bemt_disturbance_estimator", "sequence_disturbance_estimator",
+                     "bilinear_disturbance_estimator"]:
             estimator = MagicMock()
             estimator.get_disturbance_force.return_value = np.zeros(3)
             estimator.get_disturbance_torque.return_value = np.zeros(3)
             setattr(controller, name, estimator)
         sensor_data = MagicMock()
         sensor_data.rotors.rotors = [MagicMock(rotation_speed=0.0) for _ in range(4)]
+        return controller, sensor_data
 
+    def test_daiml_torque_axes_get_omega_tracking_error(self):
+        controller, sensor_data = self.make_controller_with_mock_estimators()
         controller.step_disturbance_estimator(sensor_data)
 
         daiml_tracking_error = controller.disturbance_estimator.step_disturbance.call_args.args[-1]
@@ -147,6 +155,26 @@ class TestTorqueDisturbanceCompensation(unittest.TestCase):
         controller.step_disturbance_estimator(sensor_data)
         daiml_tracking_error = controller.disturbance_estimator.step_disturbance.call_args.args[-1]
         np.testing.assert_array_equal(daiml_tracking_error, [1.0, 2.0, 3.0, 0.0, 0.0, 0.0])
+
+    def test_bilinear_estimator_gets_force_and_torque_and_basis_fields(self):
+        controller, sensor_data = self.make_controller_with_mock_estimators()
+        measured = np.array([1.0, 2.0, 3.0, 0.1, 0.2, 0.3])
+        controller.get_sensed_disturbance = lambda sensor_data: measured
+        controller.bilinear_disturbance_estimator.get_disturbance_force.return_value = np.array([4.0, 5.0, 6.0])
+        controller.bilinear_disturbance_estimator.get_disturbance_torque.return_value = np.array([0.4, 0.5, 0.6])
+        for i, rotor in enumerate(sensor_data.rotors.rotors):
+            rotor.rotation_speed = 100.0 + i
+
+        controller.step_disturbance_estimator(sensor_data)
+
+        fields, measured_arg, _ = controller.bilinear_disturbance_estimator.step_disturbance.call_args.args
+        np.testing.assert_array_equal(measured_arg, measured)   # force AND torque reach the estimator
+        self.assertEqual(fields["rotor_3_rotation_spd"], 103.0)
+        self.assertIs(fields["rotor_0_velocity"], sensor_data.rotors.rotors[0].velocity_inertial_frame)
+        for key in ["q", "v", "sensed_omega", "rotor_2_sensed_wind_velocity", "rotor_1_local_wind_velocity"]:
+            self.assertIn(key, fields)
+        np.testing.assert_array_equal(controller.f_disturb_bilinear, [4.0, 5.0, 6.0])
+        np.testing.assert_array_equal(controller.torque_disturb_bilinear, [0.4, 0.5, 0.6])
 
 
 

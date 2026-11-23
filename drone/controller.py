@@ -21,6 +21,7 @@ class DisturbanceEstimatorChoice(enum.Enum):
     PURE_DAIML = enum.auto()    # DAIML phi-net + adaptive a_hat
     BEMT = enum.auto()          # BEMT/SimpleNet fitted residual
     SEQUENCE = enum.auto()      # windowed sequence net (GRU / TCN / ResMLP)
+    BILINEAR = enum.auto()      # bilinear phi/a basis (magnitude-free phi + online RLS), force and torque
 
 
 class DroneController(simulation.scenario.Controller):
@@ -32,6 +33,8 @@ class DroneController(simulation.scenario.Controller):
         # bemt_disturbance_model_name = "wind_near_wall_bemt_fitting"
         # windowed sequence model (GRU/TCN/ResMLP) used by the sequence disturbance estimator
         sequence_disturbance_model_name = "wind_free_space_training_cfd_our_proposal_gru"
+        # bilinear phi/a basis model (phi reused for torque) used by the bilinear disturbance estimator
+        bilinear_disturbance_model_name = "wind_free_space_our_proposal_bilinear_basis"
         # propeller_lookup_table_name = "apc_8x6_with_trail"
         # propeller_lookup_table_name = "apc_8x6_fitted_in_noise_and_vibration"
         # propeller_lookup_table_name = "p600"
@@ -79,6 +82,9 @@ class DroneController(simulation.scenario.Controller):
         self.sequence_disturbance_estimator = disturbance_estimator.SequenceNetDisturbanceEstimator(sequence_disturbance_model_name, 0.01)
         self.f_disturb_seq = np.array([0.0, 0.0, 0.0])
         self.torque_disturb_seq = np.array([0.0, 0.0, 0.0])
+        self.bilinear_disturbance_estimator = disturbance_estimator.BilinearBasisDisturbanceEstimator(bilinear_disturbance_model_name, 0.01)
+        self.f_disturb_bilinear = np.array([0.0, 0.0, 0.0])
+        self.torque_disturb_bilinear = np.array([0.0, 0.0, 0.0])
         self.propeller_force_table = propeller_lookup_table.PropellerLookupTable.Reader(propeller_lookup_table_name)
         self.propeller = propeller.apc_8x6
         self.is_warmed_up = False
@@ -117,6 +123,7 @@ class DroneController(simulation.scenario.Controller):
             "f_disturb_est_base":      None,
             "f_disturb_est_bemt":      None,
             "f_disturb_est_seq":       None,
+            "f_disturb_est_bilinear":  None,
             "f_disturb_sensed_raw":    None,
             "torque_ctrl_input":       None,
             "torque_feedback":         None,
@@ -127,6 +134,7 @@ class DroneController(simulation.scenario.Controller):
             "torque_disturb_est_base": None,
             "torque_disturb_est_bemt": None,
             "torque_disturb_est_seq":  None,
+            "torque_disturb_est_bilinear": None,
             "omega_desired":           None,
             "pose_desired":            None,
             "pose_desired_dot":        None,
@@ -248,6 +256,21 @@ class DroneController(simulation.scenario.Controller):
         self._log("f_disturb_est_seq", self.f_disturb_seq)
         self._log("torque_disturb_est_seq", self.torque_disturb_seq)
 
+        # bilinear phi/a basis: phi from a window of magnitude-free features (see
+        # learning.bilinear_basis_model.basis_frame_from_fields); force and torque coefficients by online RLS
+        bilinear_fields = {"q": sensor_data.q, "v": sensor_data.v, "sensed_omega": sensor_data.omega}
+        for i, rotor in enumerate(sensor_data.rotors.rotors):
+            bilinear_fields[f"rotor_{i}_rotation_spd"] = rotor.rotation_speed
+            bilinear_fields[f"rotor_{i}_sensed_wind_velocity"] = rotor.sensed_wind_velocity
+            bilinear_fields[f"rotor_{i}_local_wind_velocity"] = rotor.local_wind_velocity
+            bilinear_fields[f"rotor_{i}_velocity"] = rotor.velocity_inertial_frame
+        self.bilinear_disturbance_estimator.step_disturbance(
+            bilinear_fields, self.get_sensed_disturbance(sensor_data), tracking_error)
+        self.f_disturb_bilinear = self.bilinear_disturbance_estimator.get_disturbance_force()
+        self.torque_disturb_bilinear = self.bilinear_disturbance_estimator.get_disturbance_torque()
+        self._log("f_disturb_est_bilinear", self.f_disturb_bilinear)
+        self._log("torque_disturb_est_bilinear", self.torque_disturb_bilinear)
+
     def get_predicted_air_force(self, sensor_data: simulation.interface.SensorData):
         """Get predicted air force and torque on drone from propeller lookup table.
 
@@ -304,6 +327,7 @@ class DroneController(simulation.scenario.Controller):
             case DisturbanceEstimatorChoice.PURE_DAIML: f_disturb_selected = self.f_disturb
             case DisturbanceEstimatorChoice.BEMT:       f_disturb_selected = self.f_disturb_bemt
             case DisturbanceEstimatorChoice.SEQUENCE:   f_disturb_selected = self.f_disturb_seq
+            case DisturbanceEstimatorChoice.BILINEAR:   f_disturb_selected = self.f_disturb_bilinear
             case _: raise ValueError(f"unhandled estimator choice: {self.disturbance_estimator_choice}")
         f_disturb_compensation = -sensor_data.pose@f_disturb_selected # add disturbance force
 
@@ -411,6 +435,7 @@ class DroneController(simulation.scenario.Controller):
             case DisturbanceEstimatorChoice.PURE_DAIML: torque_disturb_selected = self.torque_disturb
             case DisturbanceEstimatorChoice.BEMT:       torque_disturb_selected = self.torque_disturb_bemt
             case DisturbanceEstimatorChoice.SEQUENCE:   torque_disturb_selected = self.torque_disturb_seq
+            case DisturbanceEstimatorChoice.BILINEAR:   torque_disturb_selected = self.torque_disturb_bilinear
             case _: raise ValueError(f"unhandled estimator choice: {self.disturbance_estimator_choice}")
         return utils.saturate_vector_norm(-torque_disturb_selected, self.max_torque_disturb_compensation)
 
