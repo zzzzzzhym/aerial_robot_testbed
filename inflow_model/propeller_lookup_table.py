@@ -9,6 +9,14 @@ import bet
 import blade_params
 import warnings
 
+
+def _compute_bet_grid_point(blade, u_free_x, r_disk, omega):
+    """One lookup-table entry (f_x, f_y, f_z, v_i). Module-level so a process pool can pickle it.
+    BET holds no state between calls and is cheap to build, so each call makes its own."""
+    return bet.BladeElementTheory(blade).get_rotor_forces(
+        np.array([u_free_x, 0, 0]), np.array([0, 0, 0]), r_disk, omega, is_ccw_blade=True)
+
+
 class PropellerLookupTable:
     class Reader:
         def __init__(self, filename: str):
@@ -466,7 +474,12 @@ class PropellerLookupTable:
             self.pitch_range = np.asarray(pitch_range) if pitch_range is not None else np.array(PropellerLookupTable.Maker._DEFAULT_PITCH_RANGE)
             self.table = None  # (n_u_free_x, n_pitch, n_omega, 4) filled by make_propeller_lookup_table
 
-        def make_propeller_lookup_table(self, filename: str):
+        def make_propeller_lookup_table(self, filename: str, n_workers: Optional[int] = None):
+            """Compute the table on the (u_free_x, pitch, omega) grid and save it.
+            Grid points are independent and evaluated in parallel processes; n_workers defaults to all
+            CPU cores (n_workers=1 runs sequentially). The result is identical either way.
+            """
+            n_workers = n_workers or os.cpu_count() or 1
             if self.blade is None:
                 self.blade = blade_params.APC_8x6()
             self.table = np.zeros((len(self.u_free_x_range), len(self.pitch_range), len(self.omega_range), 4))   # 4 for f_x, f_y, f_z, v_i
@@ -475,17 +488,31 @@ class PropellerLookupTable:
             print("Omega range:", self.omega_range)
             print("u_free_x range:", self.u_free_x_range)
             print("Pitch range:", self.pitch_range)
-            v_forward = np.array([0, 0, 0])
             bet_instance = bet.BladeElementTheory(self.blade)
             r_disk_range = [bet_instance.pitch_rotor_disk_along_y_axis(pitch) for pitch in self.pitch_range]
-            for i, u_free_x in enumerate(self.u_free_x_range):
-                u_free = np.array([u_free_x, 0, 0])
-                for j, r_disk in enumerate(r_disk_range):
-                    for k, omega in enumerate(self.omega_range):
-                        f_x, f_y, f_z, v_i = bet_instance.get_rotor_forces(u_free, v_forward, r_disk, omega, is_ccw_blade=True)
-                        self.table[i, j, k, :] = [f_x, f_y, f_z, v_i]
-                        print(f"u_free_x: {u_free_x:.4f}, pitch: {np.rad2deg(self.pitch_range[j]):.4f}, omega: {omega:.4f}, forces: ({f_x:.4f}, {f_y:.4f}, {f_z:.4f}), v_i: {v_i:.4f}")
+            tasks = [((i, j, k), (u_free_x, r_disk_range[j], omega))
+                     for i, u_free_x in enumerate(self.u_free_x_range)
+                     for j in range(len(self.pitch_range))
+                     for k, omega in enumerate(self.omega_range)]
+            print(f"[PropellerLookupTable] {len(tasks)} grid points on {n_workers} worker(s)")
+            for n_done, ((i, j, k), solution) in enumerate(self._compute_grid_points(tasks, n_workers), start=1):
+                self.table[i, j, k, :] = solution
+                print(f"[{n_done}/{len(tasks)}] u_free_x: {self.u_free_x_range[i]:.4f}, pitch: {np.rad2deg(self.pitch_range[j]):.4f}, "
+                      f"omega: {self.omega_range[k]:.4f}, forces: ({solution[0]:.4f}, {solution[1]:.4f}, {solution[2]:.4f}), v_i: {solution[3]:.4f}")
             self.save_data(filename)
+
+        def _compute_grid_points(self, tasks, n_workers: int):
+            """Yield ((i, j, k), solution) for each ((i, j, k), args) task via _compute_bet_grid_point: in this
+            process when n_workers == 1, otherwise in a process pool (results arrive in completion order)."""
+            if n_workers == 1:
+                for index, args in tasks:
+                    yield index, _compute_bet_grid_point(self.blade, *args)
+                return
+            from concurrent.futures import ProcessPoolExecutor, as_completed
+            with ProcessPoolExecutor(max_workers=n_workers) as pool:
+                future_to_index = {pool.submit(_compute_bet_grid_point, self.blade, *args): index for index, args in tasks}
+                for future in as_completed(future_to_index):
+                    yield future_to_index[future], future.result()
 
         @staticmethod
         def _compute_sensed_tables(u_free_x_range, pitch_range, table):

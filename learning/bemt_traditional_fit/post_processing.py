@@ -46,24 +46,27 @@ def _apply_fitted_params_to_blade(fitted_params, blade: inflow_model.blade_param
         blade.aero_coeff.update_fit_params(cl_1, cl_2, cd, alpha_0)
 
 
-def make_lookup_table(fitted_params, blade: inflow_model.blade_params.Blade, table_name: str, is_hover_only: bool = False):
+def make_lookup_table(fitted_params, blade: inflow_model.blade_params.Blade, table_name: str, is_hover_only: bool = False,
+                      n_workers: Optional[int] = None):
     """Write a lookup table YAML from the fitted (physical) aero parameters.
 
     fitted_params may be the classical base coefficients or a band-corrected vector with
     CL/CD knot offsets appended; see _apply_fitted_params_to_blade for the layouts. A
     band-corrected vector installs a BandCorrectedAeroCoefficients so the correction is
-    baked into the table.
+    baked into the table. n_workers: parallel processes (default: all CPU cores).
     """
     _apply_fitted_params_to_blade(fitted_params, blade)
     print("Making lookup table with parameters:\n" + blade.aero_coeff.describe())
     if is_hover_only:
         PropellerLookupTable.Maker(
             blade, u_free_x_range=np.array([0.0]), pitch_range=np.array([0.0]),
-        ).make_propeller_lookup_table(table_name)
+        ).make_propeller_lookup_table(table_name, n_workers=n_workers)
     else:
         PropellerLookupTable.Maker(
-            blade, u_free_x_range=np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 7.0]),
-        ).make_propeller_lookup_table(table_name)
+            blade,
+            u_free_x_range=np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0]),  # was up to 7.0
+            omega_range=np.array([0, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1500, 2000, 2600]),  # same grid as the existing p600 table
+        ).make_propeller_lookup_table(table_name, n_workers=n_workers)
 
 _DEFAULT_QUADRATIC_OMEGA_RANGE = np.array(
     [0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700,
