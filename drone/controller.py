@@ -39,6 +39,7 @@ class DroneController(simulation.scenario.Controller):
         # propeller_lookup_table_name = "p600_single_rotor_quadratic"
         # select the closed-loop estimator here; the rest run in shadow (stepped + logged)
         self.disturbance_estimator_choice = DisturbanceEstimatorChoice.SEQUENCE
+        self.is_compensating_torque_disturbance = False  # subtract the selected estimator's torque estimate (low-passed) in attitude control
         self.is_using_inflow_model = True
         print("DroneController: using inflow model: ", self.is_using_inflow_model)
         print("DroneController: closed-loop disturbance estimator: ", self.disturbance_estimator_choice.name)
@@ -89,6 +90,12 @@ class DroneController(simulation.scenario.Controller):
         self.max_f_disturb_compensation = 30.0  # disturbance compensation force saturation
         self.b_2d_norm_min = 1e-3   # minimum norm to avoid singularity
         self.max_torque = 10.0  # maximum torque
+        self.max_torque_disturb_compensation = 3.0  # disturbance compensation torque saturation
+        # low-pass on the torque compensation: the estimate also absorbs commanded-vs-achieved torque (motor lag,
+        # saturation); feeding that back unfiltered is positive feedback. Wind moments are slow.
+        self.torque_disturb_compensation_time_constant = 0.3  # [s]
+        self.torque_disturb_compensation_dt = 0.01  # [s] controller step, same as the estimators' dt
+        self.torque_disturb_compensation = np.array([0.0, 0.0, 0.0])
 
         self._log_data = {
             "e_x":                     None,
@@ -115,6 +122,7 @@ class DroneController(simulation.scenario.Controller):
             "torque_feedback":         None,
             "torque_coriolis":         None,
             "torque_feedforward":      None,
+            "torque_disturb_compensation": None,
             "torque_disturb_est":      None,
             "torque_disturb_est_base": None,
             "torque_disturb_est_bemt": None,
@@ -156,6 +164,9 @@ class DroneController(simulation.scenario.Controller):
     def step_disturbance_estimator(self, sensor_data: simulation.interface.SensorData):
         # tracking_error = np.zeros(6)  # assume no tracking error term in disturbance estimator
         tracking_error = np.hstack((self.e_v, np.zeros(3)))
+        # DAIML adapts its torque axes on the same phi basis; when its torque estimate is fed back, e_omega
+        # (previous step) is the composite tracking error for torque, as e_v is for force
+        tracking_error_daiml = np.hstack((self.e_v, self.e_omega if self.is_compensating_torque_disturbance else np.zeros(3)))
         self._log("f_disturb_sensed_raw", self.get_sensed_disturbance(sensor_data)[0:3])
         self.disturbance_estimator.step_disturbance(
             sensor_data.position,
@@ -169,7 +180,7 @@ class DroneController(simulation.scenario.Controller):
                       sensor_data.rotors.rotors[2].rotation_speed,
                       sensor_data.rotors.rotors[3].rotation_speed]),
             self.get_sensed_disturbance(sensor_data),
-            tracking_error
+            tracking_error_daiml
         )
         self.f_disturb = self.disturbance_estimator.get_disturbance_force()
         self.torque_disturb = self.disturbance_estimator.get_disturbance_torque()
@@ -381,12 +392,34 @@ class DroneController(simulation.scenario.Controller):
         self._log("torque_feedback", torque_feedback)
         self._log("torque_coriolis", torque_coriolis)
         self._log("torque_feedforward", torque_feedforward)
-        self.torque = torque_feedback + torque_coriolis + torque_feedforward
+        torque_disturb_compensation = self.step_torque_disturb_compensation()
+        self._log("torque_disturb_compensation", torque_disturb_compensation)
+        self.torque = torque_feedback + torque_coriolis + torque_feedforward + torque_disturb_compensation
 
         # torque saturation
         self.torque = utils.saturate_vector_norm(self.torque, self.max_torque)
         self._log("torque_ctrl_input", self.torque)
 
+
+    def get_torque_disturb_compensation(self) -> np.ndarray:
+        """Body-frame torque cancelling the selected estimator's disturbance torque (zero if disabled).
+        Sensed disturbance torque = J*omega_dot + omega x J*omega - torque, so compensation = -estimate."""
+        if not self.is_compensating_torque_disturbance:
+            return np.zeros(3)
+        match self.disturbance_estimator_choice:
+            case DisturbanceEstimatorChoice.BASELINE:   torque_disturb_selected = self.torque_disturb_base
+            case DisturbanceEstimatorChoice.PURE_DAIML: torque_disturb_selected = self.torque_disturb
+            case DisturbanceEstimatorChoice.BEMT:       torque_disturb_selected = self.torque_disturb_bemt
+            case DisturbanceEstimatorChoice.SEQUENCE:   torque_disturb_selected = self.torque_disturb_seq
+            case _: raise ValueError(f"unhandled estimator choice: {self.disturbance_estimator_choice}")
+        return utils.saturate_vector_norm(-torque_disturb_selected, self.max_torque_disturb_compensation)
+
+    def step_torque_disturb_compensation(self) -> np.ndarray:
+        """First-order low-pass of get_torque_disturb_compensation (time constant torque_disturb_compensation_time_constant)."""
+        alpha = self.torque_disturb_compensation_dt/(self.torque_disturb_compensation_time_constant + self.torque_disturb_compensation_dt)
+        self.torque_disturb_compensation = self.torque_disturb_compensation + alpha*(
+            self.get_torque_disturb_compensation() - self.torque_disturb_compensation)
+        return self.torque_disturb_compensation
 
     def step_desired_pose(self, ref: trajectory.TrajectoryReference):
         b_3d, b_3d_dot, b_3d_dot2 = utils.get_unit_vector_derivatives(self.f_d,
